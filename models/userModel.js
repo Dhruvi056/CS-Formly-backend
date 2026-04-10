@@ -31,6 +31,14 @@ const userSchema = new mongoose.Schema(
     about: { type: String, default: "" },
     resetPasswordTokenHash: { type: String, default: "" },
     resetPasswordExpiresAt: { type: Date, default: null },
+    subscriptionPlan: {
+      type: String,
+      enum: ["free", "pro", "business"],
+      default: "free",
+    },
+    stripeCustomerId: { type: String, default: "" },
+    /** Total bytes stored for form uploads (all forms). Used for plan storage caps. */
+    storageUsedBytes: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
