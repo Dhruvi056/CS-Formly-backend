@@ -35,6 +35,7 @@ const registerUser = async (req, res) => {
       lives: user.lives || "",
       website: user.website || "",
       about: user.about || "",
+      subscriptionPlan: user.subscriptionPlan || "free",
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -68,6 +69,7 @@ const loginUser = async (req, res) => {
         lives: user.lives || "",
         website: user.website || "",
         about: user.about || "",
+        subscriptionPlan: user.subscriptionPlan || "free",
         token: generateToken(user._id),
       });
     }
@@ -98,6 +100,7 @@ const getMyProfile = async (req, res) => {
       lives: user.lives || "",
       website: user.website || "",
       about: user.about || "",
+      subscriptionPlan: user.subscriptionPlan || "free",
     });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -155,6 +158,7 @@ const updateMyProfile = async (req, res) => {
       lives: user.lives || "",
       website: user.website || "",
       about: user.about || "",
+      subscriptionPlan: user.subscriptionPlan || "free",
     });
   } catch (error) {
     if (error?.code === 11000) {

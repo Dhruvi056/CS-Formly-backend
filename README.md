@@ -1,4 +1,4 @@
-# Backend (Express + Mongo + Cloudinary)
+# Backend (Express + Mongo + DigitalOcean Spaces)
 
 ## Run locally
 

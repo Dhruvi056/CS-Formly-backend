@@ -1,19 +1,12 @@
 const Submission = require("../models/submissionModel");
-const cloudinary = require("cloudinary").v2;
 const mongoose = require("mongoose");
+const { findLatestKeyByFilename, publicUrlForKey, presignGetUrl } = require("../utils/spaces");
 
 const FILE_EXT_RE = /\.(pdf|doc|docx|xls|xlsx|csv|txt|png|jpe?g|gif|zip|rar|webp)$/i;
 
 function looksLikeUrl(v = "") {
   const lower = String(v).toLowerCase();
   return lower.startsWith("http://") || lower.startsWith("https://");
-}
-
-function toAttachmentUrl(secureUrl = "") {
-  if (!secureUrl || typeof secureUrl !== "string") return "";
-  return secureUrl.includes("/upload/")
-    ? secureUrl.replace("/upload/", "/upload/fl_attachment/")
-    : secureUrl;
 }
 
 function normalizeValueForClient(formId, fieldName, value) {
@@ -26,36 +19,27 @@ function normalizeValueForClient(formId, fieldName, value) {
   return value;
 }
 
-async function resolveCloudinaryFileUrl({ formId, fileName }) {
-  if (
-    !process.env.CLOUDINARY_CLOUD_NAME ||
-    !process.env.CLOUDINARY_API_KEY ||
-    !process.env.CLOUDINARY_API_SECRET
-  ) {
-    throw new Error("Cloudinary is not configured");
-  }
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  });
+function isTruthy(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "y";
+}
 
+async function resolveSpacesFileUrl({ formId, fileName }) {
   const safeFormId = String(formId || "").trim();
   const safeFileName = String(fileName || "").trim();
   if (!safeFormId || !safeFileName) return "";
 
-  const escaped = safeFileName.replace(/["']/g, "");
-  const expression = `folder:forms/${safeFormId} AND public_id:*${escaped}*`;
+  // We store full URLs in new submissions. This endpoint exists only for legacy
+  // rows where DB stored just a filename.
+  const key = await findLatestKeyByFilename({
+    prefix: `forms/${safeFormId}/`,
+    fileName: safeFileName,
+  });
+  if (!key) return "";
 
-  const results = await cloudinary.search
-    .expression(expression)
-    .sort_by("created_at", "desc")
-    .max_results(1)
-    .execute();
-
-  const resource = results?.resources?.[0];
-  const secureUrl = resource?.secure_url || "";
-  return toAttachmentUrl(secureUrl);
+  const isPublic = isTruthy(process.env.SPACES_PUBLIC_UPLOADS);
+  if (isPublic) return publicUrlForKey(key);
+  return await presignGetUrl({ key, expiresInSec: 60 });
 }
 
 const getSubmissions = async (req, res) => {
@@ -115,9 +99,9 @@ const resolveSubmissionFile = async (req, res) => {
       return res.status(400).json({ message: "Invalid fileName" });
     }
 
-    const url = await resolveCloudinaryFileUrl({ formId, fileName });
+    const url = await resolveSpacesFileUrl({ formId, fileName });
     if (!url) {
-      return res.status(404).json({ message: "File not found in Cloudinary" });
+      return res.status(404).json({ message: "File not found" });
     }
     return res.json({ url });
   } catch (error) {

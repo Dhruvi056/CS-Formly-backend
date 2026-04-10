@@ -1,5 +1,6 @@
 const Form = require("../models/formModel");
 const Folder = require("../models/folderModel");
+const { getMaxFormsForPlan, planAllowsProOnlySettings } = require("../utils/planLimits");
 
 const createForm = async (req, res) => {
   try {
@@ -15,6 +16,23 @@ const createForm = async (req, res) => {
     const folder = await Folder.findOne({ _id: folderId, user: req.user._id });
     if (!folder) {
       return res.status(400).json({ message: "Folder not found or not allowed" });
+    }
+
+    if (req.user.role !== "super_admin") {
+      const plan = req.user.subscriptionPlan || "free";
+      const maxForms = getMaxFormsForPlan(plan);
+      if (maxForms !== null) {
+        const count = await Form.countDocuments({ user: req.user._id });
+        if (count >= maxForms) {
+          const label = plan === "free" ? "Free" : plan === "pro" ? "Pro" : plan;
+          return res.status(403).json({
+            message: `${label} plan allows up to ${maxForms} forms. Upgrade your plan to create more.`,
+            code: "FORM_LIMIT_REACHED",
+            limit: maxForms,
+            plan,
+          });
+        }
+      }
     }
 
     const form = await Form.create({
@@ -116,6 +134,23 @@ const updateForm = async (req, res) => {
     }
     if (timezone) form.timezone = timezone;
     if (settings) {
+      if (req.user.role !== "super_admin" && !planAllowsProOnlySettings(req.user.subscriptionPlan)) {
+        const cur = form.settings && typeof form.settings.toObject === "function"
+          ? form.settings.toObject()
+          : form.settings || {};
+        const merged = { ...cur, ...settings };
+        const wantsProOnly =
+          merged.autoresponderEnabled === true ||
+          (typeof merged.customFromEmail === "string" && merged.customFromEmail.trim() !== "") ||
+          merged.hideBranding === true;
+        if (wantsProOnly) {
+          return res.status(403).json({
+            message:
+              "Autoresponder, custom email sender, and removing CS Formly branding require Pro or Business. Upgrade your plan under Upgrade plan.",
+            code: "PRO_FEATURE_REQUIRED",
+          });
+        }
+      }
       form.settings = { ...form.settings, ...settings };
     }
 

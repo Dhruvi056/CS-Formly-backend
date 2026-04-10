@@ -28,6 +28,10 @@ const formSchema = mongoose.Schema(
         default: "Form submitted successfully!",
       },
       redirectTo: String,
+      /** Pro / Business only (see planLimits.planAllowsProOnlySettings) */
+      autoresponderEnabled: { type: Boolean, default: false },
+      customFromEmail: { type: String, default: "" },
+      hideBranding: { type: Boolean, default: false },
     },
     vendorId: {
       type: String,

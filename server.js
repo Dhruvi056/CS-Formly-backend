@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const nodemailer = require("nodemailer");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
 const crypto = require("crypto");
 const cors = require("cors");
 
@@ -13,6 +12,8 @@ const formRoutes = require("./routes/formRoutes");
 const folderRoutes = require("./routes/folderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const submissionRoutes = require("./routes/submissionRoutes");
+const billingRoutes = require("./routes/billingRoutes");
+const { handleStripeWebhook } = require("./controllers/billingController");
 
 const User = require("./models/userModel");
 const Form = require("./models/formModel");
@@ -22,28 +23,24 @@ const {
   sendSubmissionNotificationEmails,
 } = require("./utils/submissionEmail");
 
-/* -------------------- Cloudinary Setup -------------------- */
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const {
+  buildKey,
+  publicUrlForKey,
+  presignPutUrl,
+  uploadBuffer,
+} = require("./utils/spaces");
+const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 connectDB();
 
-/* -------------------- Middleware -------------------- */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per file
-  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
 });
 
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 // CORS for separate frontend
 app.use(
@@ -51,9 +48,18 @@ app.use(
     origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : true,
     credentials: false,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Stripe-Signature"],
   })
 );
+
+app.post(
+  "/api/billing/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
+
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
@@ -62,6 +68,59 @@ app.use("/api/forms", formRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/submissions", submissionRoutes);
+app.use("/api/billing", billingRoutes);
+
+/* -------------------- Upload (DigitalOcean Spaces) -------------------- */
+function isTruthy(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "y";
+}
+
+const UPLOADS_PUBLIC = isTruthy(process.env.SPACES_PUBLIC_UPLOADS);
+
+// Low-load path: frontend uploads directly to Spaces using this presigned URL.
+app.post("/api/uploads/presign", async (req, res) => {
+  try {
+    const { kind, formId, fileName, contentType } = req.body || {};
+    if (!fileName) return res.status(400).json({ error: "fileName is required" });
+    if (kind !== "profile" && kind !== "form") {
+      return res.status(400).json({ error: "kind must be profile or form" });
+    }
+    if (kind === "form" && !formId) {
+      return res.status(400).json({ error: "formId is required for kind=form" });
+    }
+
+    if (kind === "form" && formId) {
+      const formRow = await Form.findById(formId).select("user").lean();
+      if (formRow?.user) {
+        const fileSize = Number(req.body.fileSize) || 0;
+        const preCheck = await assertOwnerCanAcceptSubmission(formRow.user, {
+          newBytes: fileSize,
+          countSubmission: false,
+        });
+        if (!preCheck.ok) {
+          return res.status(preCheck.status).json({
+            error: preCheck.message,
+            code: preCheck.code,
+          });
+        }
+      }
+    }
+
+    const key = buildKey({ kind, formId, fileName });
+    const uploadUrl = await presignPutUrl({
+      key,
+      contentType: contentType || "application/octet-stream",
+      expiresInSec: 60,
+      makePublic: UPLOADS_PUBLIC,
+    });
+    const url = publicUrlForKey(key);
+
+    return res.json({ key, uploadUrl, url });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || "Failed to presign upload" });
+  }
+});
 
 /* -------------------- Nodemailer Setup -------------------- */
 const transporter = nodemailer.createTransport({
@@ -116,52 +175,47 @@ async function handleFormSubmit(req, res) {
       }
     }
 
-    // Handle file uploads (if any) using Cloudinary
+    const mongoForm = await Form.findById(formId).select("name settings user").lean();
+
+    if (!mongoForm) {
+      return res.status(404).json({ error: "Form not found in MongoDB" });
+    }
+
+    const newBytes = allFiles.reduce((sum, f) => sum + (f.buffer ? f.buffer.length : 0), 0);
+    const planCheck = await assertOwnerCanAcceptSubmission(mongoForm.user, {
+      newBytes,
+      countSubmission: true,
+    });
+    if (!planCheck.ok) {
+      return res.status(planCheck.status).json({
+        error: planCheck.message,
+        code: planCheck.code,
+        plan: planCheck.plan,
+        limit: planCheck.limit,
+      });
+    }
+
+    // Handle file uploads (if any) using DigitalOcean Spaces
     if (allFiles.length > 0) {
       const uploadPromises = allFiles.map(async (file) => {
-        const safeOriginalName = file.originalname || "file";
-        const timestamp = Date.now();
+        const originalName = file.originalname || "file";
+        const fieldName = file.fieldname || "file";
+        const key = buildKey({ kind: "form", formId, fileName: originalName });
 
-        const isPdf =
-          file.mimetype === "application/pdf" ||
-          file.originalname.toLowerCase().endsWith(".pdf");
-        const resourceType = isPdf ? "raw" : "auto";
-
-        return new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            {
-              folder: `forms/${formId}`,
-              public_id: isPdf
-                ? `${timestamp}-${safeOriginalName}`
-                : `${timestamp}-${safeOriginalName.replace(/\.[^/.]+$/, "")}`,
-              resource_type: resourceType,
-            },
-            (error, result) => {
-              if (error) return reject(error);
-
-              const publicUrl = result.secure_url.replace(
-                "/upload/",
-                "/upload/fl_attachment/"
-              );
-              const fieldName = file.fieldname || "file";
-
-              if (cleanData[fieldName] === undefined) {
-                cleanData[fieldName] = publicUrl;
-              } else if (Array.isArray(cleanData[fieldName])) {
-                cleanData[fieldName].push(publicUrl);
-              } else {
-                cleanData[fieldName] = [cleanData[fieldName], publicUrl];
-              }
-              resolve(result);
-            }
-          );
-
-          const { Readable } = require("stream");
-          const readableStream = new Readable();
-          readableStream.push(file.buffer);
-          readableStream.push(null);
-          readableStream.pipe(uploadStream);
+        const { url } = await uploadBuffer({
+          key,
+          buffer: file.buffer,
+          contentType: file.mimetype || "application/octet-stream",
+          makePublic: UPLOADS_PUBLIC,
         });
+
+        if (cleanData[fieldName] === undefined) {
+          cleanData[fieldName] = url;
+        } else if (Array.isArray(cleanData[fieldName])) {
+          cleanData[fieldName].push(url);
+        } else {
+          cleanData[fieldName] = [cleanData[fieldName], url];
+        }
       });
 
       await Promise.all(uploadPromises);
@@ -171,16 +225,14 @@ async function handleFormSubmit(req, res) {
       return res.status(400).json({ error: "No form data received" });
     }
 
-    const mongoForm = await Form.findById(formId)
-      .select("name settings")
-      .lean();
-
-    if (!mongoForm) {
-      return res.status(404).json({ error: "Form not found in MongoDB" });
-    }
-
     const dataMap = new Map(Object.entries(cleanData));
     await Submission.create({ form: formId, data: dataMap });
+
+    if (planCheck.owner && planCheck.owner.role !== "super_admin" && newBytes > 0) {
+      await User.findByIdAndUpdate(mongoForm.user, {
+        $inc: { storageUsedBytes: newBytes },
+      });
+    }
 
     const recipients = parseNotificationEmails(
       mongoForm.settings?.notificationEmail
@@ -225,31 +277,32 @@ async function handleFormSubmit(req, res) {
   }
 }
 
-// Profile Upload API
+// Profile Upload API (fallback path used by frontend if presigned upload fails)
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
   try {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: "profile_photos", resource_type: "auto" },
-      (error, result) => {
-        if (error) return res.status(500).json({ error: "Cloudinary upload failed" });
-        res.json({ url: result.secure_url });
-      }
-    );
+    const key = buildKey({
+      kind: "profile",
+      fileName: req.file.originalname || "profile",
+    });
 
-    const { Readable } = require("stream");
-    const readable = new Readable();
-    readable.push(req.file.buffer);
-    readable.push(null);
-    readable.pipe(uploadStream);
+    const { url } = await uploadBuffer({
+      key,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype || "application/octet-stream",
+      makePublic: UPLOADS_PUBLIC,
+    });
+
+    return res.json({ url, key });
   } catch (error) {
-    res.status(500).json({ error: "Upload failed" });
+    return res.status(500).json({ error: "Upload failed" });
   }
 });
 
+// Public submit endpoints for embedded forms
 app.post("/api/forms/:formId", upload.any(), handleFormSubmit);
 app.post("/api/f/:formId", upload.any(), handleFormSubmit);
 

@@ -1,4 +1,5 @@
 const Folder = require("../models/folderModel");
+const { getMaxFoldersForPlan } = require("../utils/planLimits");
 
 const getFolders = async (req, res) => {
   try {
@@ -18,6 +19,23 @@ const createFolder = async (req, res) => {
   try {
     const { name, vendorId } = req.body;
     if (!name) return res.status(400).json({ message: "Folder name is required" });
+
+    if (req.user.role !== "super_admin") {
+      const plan = req.user.subscriptionPlan || "free";
+      const maxFolders = getMaxFoldersForPlan(plan);
+      if (maxFolders !== null) {
+        const count = await Folder.countDocuments({ user: req.user._id });
+        if (count >= maxFolders) {
+          const label = plan === "free" ? "Free" : plan === "pro" ? "Pro" : plan;
+          return res.status(403).json({
+            message: `${label} plan allows up to ${maxFolders} folders (workspaces). Upgrade your plan to add more.`,
+            code: "FOLDER_LIMIT_REACHED",
+            limit: maxFolders,
+            plan,
+          });
+        }
+      }
+    }
 
     const folder = await Folder.create({
       user: req.user._id,
