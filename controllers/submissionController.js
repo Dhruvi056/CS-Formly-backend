@@ -1,4 +1,6 @@
 const Submission = require("../models/submissionModel");
+const Form = require("../models/formModel");
+const User = require("../models/userModel");
 const mongoose = require("mongoose");
 const { findLatestKeyByFilename, publicUrlForKey, presignGetUrl } = require("../utils/spaces");
 
@@ -79,9 +81,21 @@ const deleteSubmission = async (req, res) => {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    submission.isDeleted = true;
-    submission.deletedAt = new Date();
-    await submission.save();
+    if (!submission.isDeleted) {
+      submission.isDeleted = true;
+      submission.deletedAt = new Date();
+      await submission.save();
+
+      // Decrement storage usage if it had files
+      if (submission.fileSize && submission.fileSize > 0) {
+        const formRow = await Form.findById(submission.form).select("user").lean();
+        if (formRow && formRow.user) {
+          await User.findByIdAndUpdate(formRow.user, {
+            $inc: { storageUsedBytes: -submission.fileSize }
+          });
+        }
+      }
+    }
 
     return res.json({ message: "Submission removed" });
   } catch (error) {

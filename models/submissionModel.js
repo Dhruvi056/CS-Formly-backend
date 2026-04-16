@@ -17,6 +17,10 @@ const submissionSchema = mongoose.Schema(
       default: false,
     },
     deletedAt: Date,
+    fileSize: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

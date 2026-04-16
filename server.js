@@ -226,7 +226,11 @@ async function handleFormSubmit(req, res) {
     }
 
     const dataMap = new Map(Object.entries(cleanData));
-    await Submission.create({ form: formId, data: dataMap });
+    await Submission.create({
+      form: formId,
+      data: dataMap,
+      fileSize: newBytes,
+    });
 
     if (planCheck.owner && planCheck.owner.role !== "super_admin" && newBytes > 0) {
       await User.findByIdAndUpdate(mongoForm.user, {
