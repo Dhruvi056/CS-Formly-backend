@@ -350,10 +350,12 @@ app.post("/api/auth/reset-password", async (req, res) => {
     user.resetPasswordExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
 
+    const requestBase =
+      req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : null;
     const baseUri =
       (typeof origin === "string" && origin.startsWith("http") ? origin : null) ||
       process.env.FRONTEND_URL ||
-      "http://localhost:3000";
+      (IS_PRODUCTION ? requestBase : "http://localhost:3000");
     const customResetLink = `${baseUri}/reset-password?token=${rawToken}`;
 
     if (process.env.NODE_ENV !== "production") {
