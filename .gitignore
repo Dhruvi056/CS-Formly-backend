@@ -13,7 +13,7 @@ pnpm-debug.log*
 logs/
 
 # build artifacts
-dist/
+
 build/
 coverage/
 
