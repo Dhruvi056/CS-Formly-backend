@@ -1,6 +1,9 @@
 require("dotenv").config();
 
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const { exec } = require("child_process");
 const nodemailer = require("nodemailer");
 const multer = require("multer");
 const crypto = require("crypto");
@@ -33,6 +36,16 @@ const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Preferred deployment structure:
+// backend/
+//   server.js
+//   dist/  <- frontend build output copied here
+const DIST_DIR = path.join(__dirname, "dist");
+const LEGACY_CRA_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
+const FRONTEND_DIR = fs.existsSync(DIST_DIR) ? DIST_DIR : LEGACY_CRA_BUILD_DIR;
+const INDEX_HTML = path.join(FRONTEND_DIR, "index.html");
 
 connectDB();
 
@@ -42,10 +55,13 @@ const upload = multer({
 });
 
 
-// CORS for separate frontend
+// CORS: strict in development, typically unnecessary in same-origin production.
+const devCorsOrigins = process.env.FRONTEND_URL
+  ? [process.env.FRONTEND_URL]
+  : ["http://localhost:3000", "http://localhost:5173"];
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : true,
+    origin: IS_PRODUCTION ? true : devCorsOrigins,
     credentials: false,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "Stripe-Signature"],
@@ -400,7 +416,38 @@ app.post("/api/auth/reset-password/confirm", async (req, res) => {
   }
 });
 
+// Serve frontend static files if a build exists.
+if (fs.existsSync(FRONTEND_DIR)) {
+  app.use(express.static(FRONTEND_DIR));
+}
+
+// SPA fallback route: return index.html for unknown non-API routes.
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "API route not found" });
+  }
+
+  if (!fs.existsSync(INDEX_HTML)) {
+    return res.status(500).json({
+      error:
+        "Frontend build not found. Build frontend and copy output to backend/dist (or ensure ../frontend/build exists).",
+    });
+  }
+
+  return res.sendFile(INDEX_HTML);
+});
+
 app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`);
+  if (!IS_PRODUCTION && String(process.env.AUTO_OPEN_BROWSER || "") === "true") {
+    const url = `http://localhost:${PORT}`;
+    const opener =
+      process.platform === "win32"
+        ? `start "" "${url}"`
+        : process.platform === "darwin"
+          ? `open "${url}"`
+          : `xdg-open "${url}"`;
+    exec(opener, () => {});
+  }
 });
 
