@@ -35,7 +35,7 @@ const {
 const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 // Preferred deployment structure:
