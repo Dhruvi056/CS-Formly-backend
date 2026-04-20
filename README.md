@@ -9,6 +9,6 @@ npm install
 npm start
 ```
 
-- Default port: `5000`
+- Default port: `3000`
 - Health check: `GET /health`
 
