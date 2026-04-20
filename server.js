@@ -439,8 +439,8 @@ app.get("*", (req, res) => {
   return res.sendFile(INDEX_HTML);
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running at http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+   console.log(`Backend running at http://0.0.0.0:${PORT}`);
   if (!IS_PRODUCTION && String(process.env.AUTO_OPEN_BROWSER || "") === "true") {
     const url = `http://localhost:${PORT}`;
     const opener =
