@@ -55,13 +55,12 @@ const upload = multer({
 });
 
 
-// CORS: strict in development, typically unnecessary in same-origin production.
-const devCorsOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
-  : ["http://localhost:3000", "http://localhost:5173"];
+// CORS: allow requests from any origin (forms can be embedded anywhere).
+// Keep credentials false so wildcard CORS remains valid.
+
 app.use(
   cors({
-    origin: IS_PRODUCTION ? true : devCorsOrigins,
+    origin: true,
     credentials: false,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "Stripe-Signature"],
