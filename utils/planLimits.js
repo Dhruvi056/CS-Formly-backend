@@ -9,7 +9,7 @@ const PLAN_CONFIG = {
   free: {
     maxForms: 5,
     maxSubmissions: 50, // ⚠️ TEST VALUE — change to 3000 for production
-    maxStorageBytes: 1 * BYTES_MB, // ⚠️ TEST VALUE — set back to 1 * BYTES_GB for production
+    maxStorageBytes: 1 * BYTES_GB,
     maxFolders: 2,
   },
   pro: {
