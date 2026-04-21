@@ -8,6 +8,26 @@ function toName(u) {
   return [first, last].filter(Boolean).join(" ").trim();
 }
 
+function clampDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+function fmtDay(d) {
+  const x = new Date(d);
+  const yyyy = String(x.getFullYear());
+  const mm = String(x.getMonth() + 1).padStart(2, "0");
+  const dd = String(x.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Get metrics for Super Admin dashboard
 const getMetrics = async (req, res) => {
   try {
@@ -15,16 +35,97 @@ const getMetrics = async (req, res) => {
       return res.status(403).json({ message: "Access forbidden: Super Admin only" });
     }
 
-    const [usersCount, formsCount, foldersCount] = await Promise.all([
-      User.countDocuments({ role: "vendor_admin" }),
+    const vendorMatch = { role: "vendor_admin", isDeleted: { $ne: true } };
+
+    const [usersCount, formsCount, foldersCount, planCountsAgg, recentVendors] = await Promise.all([
+      User.countDocuments(vendorMatch),
       Form.countDocuments(),
       Folder.countDocuments(),
+      User.aggregate([
+        { $match: vendorMatch },
+        {
+          $project: {
+            plan: {
+              $toLower: {
+                $ifNull: ["$subscriptionPlan", "free"],
+              },
+            },
+          },
+        },
+        { $group: { _id: "$plan", count: { $sum: 1 } } },
+      ]),
+      User.find(vendorMatch)
+        .select("firstName lastName email subscriptionPlan createdAt vendorId")
+        .sort({ createdAt: -1 })
+        .limit(250)
+        .lean(),
     ]);
+
+    const planCounts = { free: 0, pro: 0, business: 0 };
+    (planCountsAgg || []).forEach((row) => {
+      const key = String(row._id || "").toLowerCase();
+      if (key === "free" || key === "pro" || key === "business") {
+        planCounts[key] = row.count || 0;
+      }
+    });
+
+    const usersByPlan = { free: [], pro: [], business: [] };
+    (recentVendors || []).forEach((u) => {
+      const plan = String(u.subscriptionPlan || "free").toLowerCase();
+      const safePlan = plan === "pro" || plan === "business" ? plan : "free";
+      usersByPlan[safePlan].push({
+        id: String(u._id),
+        vendorId: u.vendorId || String(u._id),
+        name: u.name || toName(u) || "-",
+        email: u.email || "-",
+        subscriptionPlan: safePlan,
+        createdAt: u.createdAt,
+      });
+    });
+
+    // last 14 days signup series (vendors only), grouped by plan
+    const today = clampDay(new Date());
+    const start = addDays(today, -13);
+    const signupAgg = await User.aggregate([
+      { $match: { ...vendorMatch, createdAt: { $gte: start } } },
+      {
+        $project: {
+          day: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          plan: {
+            $toLower: {
+              $ifNull: ["$subscriptionPlan", "free"],
+            },
+          },
+        },
+      },
+      { $group: { _id: { day: "$day", plan: "$plan" }, count: { $sum: 1 } } },
+    ]);
+
+    const byDay = new Map();
+    for (let i = 0; i < 14; i += 1) {
+      const day = fmtDay(addDays(start, i));
+      byDay.set(day, { day, free: 0, pro: 0, business: 0, total: 0 });
+    }
+    (signupAgg || []).forEach((row) => {
+      const day = row?._id?.day;
+      const plan = String(row?._id?.plan || "free").toLowerCase();
+      if (!day || !byDay.has(day)) return;
+      const safePlan = plan === "pro" || plan === "business" ? plan : "free";
+      const obj = byDay.get(day);
+      obj[safePlan] += row.count || 0;
+      obj.total += row.count || 0;
+    });
 
     return res.json({
       users: usersCount,
       forms: formsCount,
       folders: foldersCount,
+      plans: {
+        total: planCounts.free + planCounts.pro + planCounts.business,
+        counts: planCounts,
+      },
+      usersByPlan,
+      signupSeries: Array.from(byDay.values()),
     });
   } catch (error) {
     return res.status(500).json({ message: error.message });

@@ -10,6 +10,33 @@ function looksLikeUrl(v = "") {
   const lower = String(v).toLowerCase();
   return lower.startsWith("http://") || lower.startsWith("https://");
 }
+~
+function tryParseJson(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeSubmissionDataShape(rawData) {
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+    return rawData;
+  }
+
+  // Support webhook-style payload rows:
+  // { triggerType: "form_submission", payload: { data: {...} } }
+  const payload = tryParseJson(rawData.payload);
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const payloadData = tryParseJson(payload.data);
+    if (payloadData && typeof payloadData === "object" && !Array.isArray(payloadData)) {
+      return payloadData;
+    }
+  }
+
+  return rawData;
+}
 
 function normalizeValueForClient(formId, fieldName, value) {
   if (Array.isArray(value)) {
@@ -58,6 +85,7 @@ const getSubmissions = async (req, res) => {
       if (o.data instanceof Map) {
         o.data = Object.fromEntries(o.data);
       }
+      o.data = normalizeSubmissionDataShape(o.data);
       if (o.data && typeof o.data === "object") {
         const next = {};
         for (const [k, v] of Object.entries(o.data)) {
