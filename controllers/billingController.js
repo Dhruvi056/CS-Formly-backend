@@ -35,8 +35,16 @@ async function applyPlanFromSession(session) {
     session.payment_status === "no_payment_required";
   if (!paid) return;
 
-  await User.findByIdAndUpdate(userId, {
+  const historyEntry = {
+    plan,
+    amount: session.amount_total ? session.amount_total / 100 : 0,
+    currency: session.currency || "usd",
+    date: new Date(),
+  };
+
+  const user = await User.findByIdAndUpdate(userId, {
     subscriptionPlan: plan,
+    $push: { planHistory: historyEntry },
     ...(session.customer && typeof session.customer === "string"
       ? { stripeCustomerId: session.customer }
       : {}),
@@ -82,15 +90,24 @@ const createCheckoutSession = async (req, res) => {
         stripeCustomerId = "";
       }
     }
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: { userId: String(user._id) },
-      });
-      stripeCustomerId = customer.id;
-      user.stripeCustomerId = customer.id;
-      await user.save();
-    }
+if (!stripeCustomerId) {
+  const customer = await stripe.customers.create({
+    email: user.email,
+    name: `${user.firstName} ${user.lastName}`,
+    metadata: { userId: String(user._id) },
+  });
+
+  stripeCustomerId = customer.id;
+  user.stripeCustomerId = customer.id;
+  await user.save();
+
+} else {
+ 
+  await stripe.customers.update(stripeCustomerId, {
+    email: user.email,
+    name: `${user.firstName} ${user.lastName}`,
+  });
+}
 
     const base = getFrontendUrl();
     const session = await stripe.checkout.sessions.create({
@@ -99,6 +116,7 @@ const createCheckoutSession = async (req, res) => {
       success_url: `${base}/pricing?success=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/pricing?canceled=1`,
       customer: stripeCustomerId,
+      
       client_reference_id: String(user._id),
       metadata: {
         userId: String(user._id),
@@ -203,6 +221,17 @@ const handleStripeWebhook = async (req, res) => {
   return res.json({ received: true });
 };
 
+const getPlanHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("planHistory");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json(user.planHistory || []);
+  } catch (err) {
+    console.error("getPlanHistory", err);
+    return res.status(500).json({ error: err.message || "Failed to load plan history" });
+  }
+};
+
 const getUsage = async (req, res) => {
   try {
     const snap = await getUsageSnapshot(req.user._id);
@@ -219,4 +248,5 @@ module.exports = {
   completeCheckoutSession,
   handleStripeWebhook,
   getUsage,
+  getPlanHistory,
 };

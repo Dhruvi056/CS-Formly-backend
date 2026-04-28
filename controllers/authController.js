@@ -1,13 +1,30 @@
 const User = require("../models/userModel");
 const generateToken = require("../utils/generateToken");
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
+
 const registerUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role } = req.body;
+    const { firstName, lastName, email, password,role } = req.body;
+
+    const cleanEmail = email.trim().toLowerCase();
 
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
+  }
+
+    // Email validation
+    if (!emailRegex.test(email)) {
+       return res.status(400).json({ message: "Invalid email format" });
     }
+
+    // Password validation
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+      message:"Password must include uppercase, lowercase, number and special character (min 6 chars)",
+    });
+}
 
     const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
@@ -46,11 +63,15 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const cleanEmail = email.trim().toLowerCase();
+ 
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ message: "Invalid email format" });
+}
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password required" });
-    }
-
+  if (password.length < 6) {
+    return res.status(400).json({ message: "Invalid password format" });
+  }
     const user = await User.findOne({ email: email.toLowerCase() }).select(
       "+password"
     );
@@ -77,6 +98,72 @@ const loginUser = async (req, res) => {
     return res.status(401).json({ message: "Invalid email or password" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("+password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // Validate new password (same as register)
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        message:
+          "Password must include uppercase, lowercase, number and special character (min 6 chars)",
+      });
+    }
+
+    // Check current password
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+
+    // Update password (your model already hashes it)
+    user.password = newPassword;
+
+    await user.save();
+
+    return res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const Form = require("../models/formModel");
+    const Submission = require("../models/submissionModel");
+    const Folder = require("../models/folderModel");
+
+    const ownedForms = await Form.find({ user: userId }).select("_id").lean();
+    const formIds = ownedForms.map((f) => f._id);
+
+    if (formIds.length > 0) {
+      await Submission.deleteMany({ form: { $in: formIds } });
+    }
+
+    await Form.deleteMany({ user: userId });
+    await Folder.deleteMany({ user: userId });
+    await User.findByIdAndDelete(userId);
+
+    return res.json({ message: "Account deleted successfully" });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Error deleting account" });
   }
 };
 
@@ -168,5 +255,5 @@ const updateMyProfile = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMyProfile, updateMyProfile };
+module.exports = { registerUser, loginUser, getMyProfile, updateMyProfile ,changePassword,deleteAccount};
 

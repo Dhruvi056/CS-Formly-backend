@@ -16,11 +16,13 @@ const folderRoutes = require("./routes/folderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const submissionRoutes = require("./routes/submissionRoutes");
 const billingRoutes = require("./routes/billingRoutes");
+const smtpRoutes = require("./routes/smtpRoutes");
 const { handleStripeWebhook } = require("./controllers/billingController");
 
 const User = require("./models/userModel");
 const Form = require("./models/formModel");
 const Submission = require("./models/submissionModel");
+const SmtpConfig = require("./models/smtpModel");
 const {
   parseNotificationEmails,
   sendSubmissionNotificationEmails,
@@ -84,6 +86,7 @@ app.use("/api/folders", folderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/submissions", submissionRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/smtp", smtpRoutes);
 
 /* -------------------- Upload (DigitalOcean Spaces) -------------------- */
 function isTruthy(v) {
@@ -265,9 +268,38 @@ async function handleFormSubmit(req, res) {
       : `/forms/${formId}`;
 
     try {
+      // 1. Check if the user has a custom SMTP configuration
+      const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user, isDefault: true }).lean();
+      
+      let finalTransporter = transporter;
+      let finalFromUser = process.env.EMAIL_USER;
+      let finalFromName = "CS Formly";
+
+      if (customSmtp) {
+        try {
+          finalTransporter = nodemailer.createTransport({
+            host: customSmtp.host,
+            port: customSmtp.port,
+            secure: customSmtp.encryption === "SSL" || customSmtp.port === 465,
+            auth: {
+              user: customSmtp.username,
+              pass: customSmtp.password,
+            },
+            tls: {
+              rejectUnauthorized: false,
+            },
+          });
+          finalFromUser = customSmtp.fromEmail;
+          finalFromName = customSmtp.fromName;
+        } catch (e) {
+          console.error("Failed to create custom transporter, falling back to default:", e);
+        }
+      }
+
       await sendSubmissionNotificationEmails({
-        transporter,
-        fromUser: process.env.EMAIL_USER,
+        transporter: finalTransporter,
+        fromUser: finalFromUser,
+        fromName: finalFromName, // Added this parameter support
         formName: mongoForm.name,
         formId,
         dashboardUrl,
@@ -275,7 +307,7 @@ async function handleFormSubmit(req, res) {
         recipients,
       });
     } catch (emailError) {
-      // ignore email failures
+      console.error("Email sending failed:", emailError);
     }
 
     const { name, fname, lname } = cleanData;
@@ -422,12 +454,13 @@ if (fs.existsSync(FRONTEND_DIR)) {
   app.use(express.static(FRONTEND_DIR));
 }
 
+// Catch all API requests that didn't match and return JSON 404
+app.all("/api/*", (req, res) => {
+  return res.status(404).json({ error: "API route not found" });
+});
+
 // SPA fallback route: return index.html for unknown non-API routes.
 app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({ error: "API route not found" });
-  }
-
   if (!fs.existsSync(INDEX_HTML)) {
     return res.status(500).json({
       error:
