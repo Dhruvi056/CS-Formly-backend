@@ -46,7 +46,13 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 //   dist/  <- frontend build output copied here
 const DIST_DIR = path.join(__dirname, "dist");
 const LEGACY_CRA_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
-const FRONTEND_DIR = fs.existsSync(DIST_DIR) ? DIST_DIR : LEGACY_CRA_BUILD_DIR;
+
+// Robust detection: use DIST_DIR if index.html exists there, otherwise fallback to frontend/build
+let FRONTEND_DIR = LEGACY_CRA_BUILD_DIR;
+if (fs.existsSync(path.join(DIST_DIR, "index.html"))) {
+  FRONTEND_DIR = DIST_DIR;
+}
+
 const INDEX_HTML = path.join(FRONTEND_DIR, "index.html");
 
 connectDB();
