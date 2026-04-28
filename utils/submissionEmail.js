@@ -55,7 +55,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData })
     .logo span { color: rgba(255,255,255,0.7); font-weight: 400; }
     .title { font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8; margin-top: 10px; }
     .content { padding: 40px; }
-    .form-info { background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px; border-left: 4px solid #6571ff; }
+    .form-info { background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
     .form-name { font-size: 18px; font-weight: 700; color: #060c17; margin-bottom: 5px; }
     .form-url { font-size: 13px; color: #6571ff; text-decoration: none; word-break: break-all; }
     .submission-data { width: 100%; border-collapse: separate; border-spacing: 0 12px; }
@@ -94,6 +94,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData })
 async function sendSubmissionNotificationEmails({
   transporter,
   fromUser,
+  fromName,
   formName,
   formId,
   dashboardUrl,
@@ -106,6 +107,7 @@ async function sendSubmissionNotificationEmails({
   const html = buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData });
   const subject = `New Form Submission - ${formName || formId}`;
 
+  // ... (production code omitted for brevity in this view, but keeping logic)
   if (process.env.NODE_ENV === "production") {
     try {
       const { sendNotificationEmail } = require(path.join(
@@ -121,9 +123,11 @@ async function sendSubmissionNotificationEmails({
     }
   }
 
+  const senderName = fromName || "CS Formly";
+
   for (const to of recipients) {
     await transporter.sendMail({
-      from: `"CS Formly" <${fromUser}>`,
+      from: `"${senderName}" <${fromUser}>`,
       to,
       subject,
       html,

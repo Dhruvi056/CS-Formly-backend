@@ -39,6 +39,15 @@ const userSchema = new mongoose.Schema(
     stripeCustomerId: { type: String, default: "" },
     /** Total bytes stored for form uploads (all forms). Used for plan storage caps. */
     storageUsedBytes: { type: Number, default: 0 },
+    planHistory: [
+      {
+        plan: { type: String, enum: ["free", "pro", "business"] },
+        amount: { type: Number },
+        currency: { type: String },
+        interval: { type: String },
+        date: { type: Date, default: Date.now },
+      }
+    ],
   },
   { timestamps: true }
 );

@@ -10,7 +10,7 @@ function looksLikeUrl(v = "") {
   const lower = String(v).toLowerCase();
   return lower.startsWith("http://") || lower.startsWith("https://");
 }
-~
+
 function tryParseJson(value) {
   if (typeof value !== "string") return value;
   try {
