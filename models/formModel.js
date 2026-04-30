@@ -29,7 +29,9 @@ const formSchema = mongoose.Schema(
       },
       redirectTo: String,
       /** Pro / Business only (see planLimits.planAllowsProOnlySettings) */
-      autoresponderEnabled: { type: Boolean, default: false },
+
+      customTemplateEnabled: { type: Boolean, default: false },
+      customTemplateBody: { type: String, default: "" },
       customFromEmail: { type: String, default: "" },
       hideBranding: { type: Boolean, default: false },
     },

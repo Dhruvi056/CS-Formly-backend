@@ -66,77 +66,101 @@ const createCheckoutSession = async (req, res) => {
     }
 
     const plan = String(req.body?.plan || "").toLowerCase();
+    const mode = req.body?.mode === "payment" ? "payment" : "subscription";
+
+    console.log("createCheckoutSession: plan=", plan, "mode=", mode, "userId=", req.user?._id);
+
     if (plan !== "pro" && plan !== "business") {
+      console.warn("createCheckoutSession: Invalid plan", plan);
       return res.status(400).json({ error: "plan must be pro or business" });
     }
 
     const envName = PLAN_TO_ENV_PRICE[plan];
     const priceId = process.env[envName];
     if (!priceId) {
+      console.error(`createCheckoutSession: Missing ${envName} in .env`);
       return res.status(503).json({
         error: `Missing ${envName} in environment (Stripe Price ID for ${plan})`,
       });
     }
 
     const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) {
+      console.error("createCheckoutSession: User not found", req.user._id);
+      return res.status(404).json({ error: "User not found" });
+    }
 
     // Accounts V2: Checkout in test mode requires an existing Customer (not only customer_email).
     let stripeCustomerId = user.stripeCustomerId;
     if (stripeCustomerId) {
       try {
         await stripe.customers.retrieve(stripeCustomerId);
-      } catch {
+        console.log("createCheckoutSession: Existing customer found", stripeCustomerId);
+      } catch (err) {
+        console.warn("createCheckoutSession: Customer retrieve failed, will create new one", err.message);
         stripeCustomerId = "";
       }
     }
-if (!stripeCustomerId) {
-  const customer = await stripe.customers.create({
-    email: user.email,
-    name: `${user.firstName} ${user.lastName}`,
-    metadata: { userId: String(user._id) },
-  });
 
-  stripeCustomerId = customer.id;
-  user.stripeCustomerId = customer.id;
-  await user.save();
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        metadata: { userId: String(user._id) },
+      });
 
-} else {
- 
-  await stripe.customers.update(stripeCustomerId, {
-    email: user.email,
-    name: `${user.firstName} ${user.lastName}`,
-  });
-}
+      stripeCustomerId = customer.id;
+      user.stripeCustomerId = customer.id;
+      await user.save();
+      console.log("createCheckoutSession: New customer created", stripeCustomerId);
+    } else {
+      await stripe.customers.update(stripeCustomerId, {
+        email: user.email,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+      });
+      console.log("createCheckoutSession: Customer updated", stripeCustomerId);
+    }
 
     const base = getFrontendUrl();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+    const sessionOptions = {
+      mode: mode,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${base}/pricing?success=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/pricing?canceled=1`,
       customer: stripeCustomerId,
-      
       client_reference_id: String(user._id),
       metadata: {
         userId: String(user._id),
         plan,
+        mode,
       },
-      subscription_data: {
+    };
+
+    // For subscriptions, add subscription_data
+    if (mode === "subscription") {
+      sessionOptions.subscription_data = {
         metadata: {
           userId: String(user._id),
           plan,
         },
-      },
-    });
+      };
+    } else {
+      // For one-time payments, enable invoice creation for automatic receipt/invoice
+      sessionOptions.invoice_creation = { enabled: true };
+    }
+
+    console.log("createCheckoutSession: Creating session with options", JSON.stringify(sessionOptions, null, 2));
+    const session = await stripe.checkout.sessions.create(sessionOptions);
 
     if (!session.url) {
+      console.error("createCheckoutSession: No session URL returned");
       return res.status(500).json({ error: "Stripe did not return a checkout URL" });
     }
 
+    console.log("createCheckoutSession: Session created", session.id);
     return res.json({ url: session.url });
   } catch (err) {
-    console.error("createCheckoutSession", err);
+    console.error("createCheckoutSession ERROR:", err);
     return res.status(500).json({ error: err.message || "Checkout failed" });
   }
 };
