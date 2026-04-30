@@ -53,6 +53,7 @@ const registerUser = async (req, res) => {
       website: user.website || "",
       about: user.about || "",
       subscriptionPlan: user.subscriptionPlan || "free",
+      createdAt: user.createdAt,
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -91,6 +92,7 @@ const loginUser = async (req, res) => {
         website: user.website || "",
         about: user.about || "",
         subscriptionPlan: user.subscriptionPlan || "free",
+        createdAt: user.createdAt,
         token: generateToken(user._id),
       });
     }
@@ -188,6 +190,7 @@ const getMyProfile = async (req, res) => {
       website: user.website || "",
       about: user.about || "",
       subscriptionPlan: user.subscriptionPlan || "free",
+      createdAt: user.createdAt,
     });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -246,6 +249,7 @@ const updateMyProfile = async (req, res) => {
       website: user.website || "",
       about: user.about || "",
       subscriptionPlan: user.subscriptionPlan || "free",
+      createdAt: user.createdAt,
     });
   } catch (error) {
     if (error?.code === 11000) {

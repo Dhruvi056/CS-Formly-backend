@@ -282,6 +282,7 @@ async function handleFormSubmit(req, res) {
       let finalFromName = "CS Formly";
 
       if (customSmtp) {
+        console.log(`Using custom SMTP for user ${mongoForm.user}: ${customSmtp.host}`);
         try {
           finalTransporter = nodemailer.createTransport({
             host: customSmtp.host,
@@ -300,7 +301,21 @@ async function handleFormSubmit(req, res) {
         } catch (e) {
           console.error("Failed to create custom transporter, falling back to default:", e);
         }
+      } else {
+        console.log(`Using default system SMTP for user ${mongoForm.user}`);
       }
+
+      const metadata = {
+        submittedAt: new Date().toLocaleString("en-US", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress,
+      };
 
       await sendSubmissionNotificationEmails({
         transporter: finalTransporter,
@@ -311,7 +326,12 @@ async function handleFormSubmit(req, res) {
         dashboardUrl,
         cleanData,
         recipients,
+        metadata,
+        customTemplateEnabled: mongoForm.settings?.customTemplateEnabled,
+        customTemplateBody: mongoForm.settings?.customTemplateBody,
       });
+
+
     } catch (emailError) {
       console.error("Email sending failed:", emailError);
     }

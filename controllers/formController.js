@@ -9,13 +9,12 @@ const createForm = async (req, res) => {
     if (!name) {
       return res.status(400).json({ message: "Form name is required" });
     }
-    if (!folderId) {
-      return res.status(400).json({ message: "Folder is required to create a form" });
-    }
 
-    const folder = await Folder.findOne({ _id: folderId, user: req.user._id });
-    if (!folder) {
-      return res.status(400).json({ message: "Folder not found or not allowed" });
+    if (folderId) {
+      const folder = await Folder.findOne({ _id: folderId, user: req.user._id });
+      if (!folder) {
+        return res.status(400).json({ message: "Folder not found or not allowed" });
+      }
     }
 
     if (req.user.role !== "super_admin") {
@@ -151,11 +150,107 @@ const updateForm = async (req, res) => {
           });
         }
       }
-      form.settings = { ...form.settings, ...settings };
+      const currentSettings = form.settings && typeof form.settings.toObject === "function"
+        ? form.settings.toObject()
+        : form.settings || {};
+      form.settings = { ...currentSettings, ...settings };
     }
 
     const updatedForm = await form.save();
     return res.json(updatedForm);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const saveTemplate = async (req, res) => {
+  try {
+    const form = await Form.findById(req.params.id);
+    if (!form) {
+      return res.status(404).json({ message: "Form not found" });
+    }
+
+    if (req.user.role !== "super_admin") {
+      if (form.user.toString() !== req.user._id.toString()) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+    }
+
+    const { customTemplateEnabled, customTemplateBody } = req.body;
+    
+    const currentSettings = form.settings && typeof form.settings.toObject === "function"
+      ? form.settings.toObject()
+      : form.settings || {};
+
+    form.settings = { 
+      ...currentSettings, 
+      customTemplateEnabled: !!customTemplateEnabled,
+      customTemplateBody: customTemplateBody || ""
+    };
+
+    const updatedForm = await form.save();
+    return res.json(updatedForm);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const testTemplate = async (req, res) => {
+  try {
+    const form = await Form.findById(req.params.id);
+    if (!form) {
+      return res.status(404).json({ message: "Form not found" });
+    }
+
+    if (req.user.role !== "super_admin") {
+      if (form.user.toString() !== req.user._id.toString()) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+    }
+
+    const { templateBody } = req.body;
+    if (!templateBody) {
+      return res.status(400).json({ message: "Template body is required" });
+    }
+
+    // Replace sample variables
+    const sampleData = {
+      name: "John Doe",
+      email: "john@example.com",
+      message: "This is a test message from your custom template."
+    };
+
+    let html = templateBody;
+    for (const key in sampleData) {
+      const val = sampleData[key];
+      const placeholder = new RegExp(`{${key}}`, 'g');
+      html = html.replace(placeholder, val);
+    }
+    
+    // We can also allow {{name}} syntax if they use that
+    for (const key in sampleData) {
+      const val = sampleData[key];
+      const placeholder = new RegExp(`{{${key}}}`, 'g');
+      html = html.replace(placeholder, val);
+    }
+
+    const nodemailer = require("nodemailer");
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"CS Formly Test" <${process.env.EMAIL_USER}>`,
+      to: req.user.email,
+      subject: `Test Custom Template - ${form.name}`,
+      html: html,
+    });
+
+    return res.json({ message: "Test email sent successfully" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -167,5 +262,7 @@ module.exports = {
   getFormById,
   updateForm,
   deleteForm,
+  saveTemplate,
+  testTemplate,
 };
 
