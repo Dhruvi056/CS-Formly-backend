@@ -423,20 +423,30 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
 
     // 2. Fallback to Local Storage
+    const uploadDir = path.join(__dirname, "public/uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
     const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, "_")}`;
-    const filePath = path.join(__dirname, "public/uploads", fileName);
+    const filePath = path.join(uploadDir, fileName);
     
     fs.writeFileSync(filePath, req.file.buffer);
     
     // Construct the URL based on the current host
-    const protocol = req.protocol;
+    // Support https behind proxies (like Nginx/Live Server)
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
     const host = req.get("host");
     const url = `${protocol}://${host}/uploads/${fileName}`;
 
+    console.log("Local upload success:", url);
     return res.json({ url, key: fileName });
   } catch (error) {
-    console.error("Upload error:", error);
-    return res.status(500).json({ error: error.message || "Upload failed" });
+    console.error("Upload error details:", error);
+    return res.status(500).json({ 
+      error: "Upload failed on server", 
+      details: error.message 
+    });
   }
 });
 
