@@ -208,9 +208,141 @@ async function sendSubmissionNotificationEmails({
   }
 }
 
+function findSubmitterEmail(cleanData) {
+  const emailKeys = ["email", "Email", "EMAIL", "e-mail", "E-mail"];
+  for (const key of emailKeys) {
+    const val = cleanData[key];
+    if (typeof val === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) {
+      return val.trim();
+    }
+  }
+  // fallback: search all fields for something that looks like an email
+  for (const val of Object.values(cleanData)) {
+    if (typeof val === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) {
+      return val.trim();
+    }
+  }
+  return null;
+}
+
+async function sendAutoresponderEmail({
+  transporter,
+  fromUser,
+  fromName,
+  formName,
+  formId,
+  cleanData,
+  metadata = {},
+  autoresponderSubject,
+  autoresponderBody,
+}) {
+  const to = findSubmitterEmail(cleanData);
+  if (!to) {
+    console.warn(`No submitter email found for form ${formId}. Skipping autoresponder.`);
+    return;
+  }
+
+  let html = autoresponderBody || "Thank you for your submission!";
+  let subject = autoresponderSubject || `Thank you for your submission - ${formName || formId}`;
+
+  // Support an {{AllFields}} macro
+  if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
+    const rowsHtml = Object.entries(cleanData)
+      .map(([key, value]) => {
+        let displayValue;
+        if (Array.isArray(value)) {
+          displayValue = value
+            .map((v) =>
+              typeof v === "string" && v.startsWith("http")
+                ? `<a href="${escapeHtml(v)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`
+                : escapeHtml(v)
+            )
+            .join(", ");
+        } else if (typeof value === "string" && value.startsWith("http")) {
+          displayValue = `<a href="${escapeHtml(value)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`;
+        } else {
+          displayValue = escapeHtml(value);
+        }
+        return `
+          <tr>
+            <th style="text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px;">${escapeHtml(key)}</th>
+            <td style="padding-bottom: 12px; border-bottom: 1px solid #edf1f7; color: #060c17; font-size: 15px; font-weight: 500; word-break: break-all;">${displayValue}</td>
+          </tr>`;
+      })
+      .join("");
+
+    const allFieldsTable = `<table style="width: 100%; border-collapse: separate; border-spacing: 0 12px;">${rowsHtml}</table>`;
+    html = html.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
+  }
+
+  // Replace placeholders in body and subject
+  for (const key in cleanData) {
+    const val = cleanData[key];
+    const regex = new RegExp(`\\\\{\\\\{${key}\\\\}\\\\}`, "gi");
+    const regexSimple = new RegExp(`\\\\{${key}\\\\}`, "gi");
+    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), val);
+    html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), val);
+    subject = subject.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), val);
+    subject = subject.replace(new RegExp(`\\{${key}\\}`, "gi"), val);
+  }
+
+  // Support built-in meta variables
+  const metaVars = {
+    FormName: formName || formId,
+    SubmittedAt: metadata.submittedAt || new Date().toLocaleString(),
+  };
+
+  for (const key in metaVars) {
+    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), metaVars[key]);
+    html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), metaVars[key]);
+    subject = subject.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), metaVars[key]);
+    subject = subject.replace(new RegExp(`\\{${key}\\}`, "gi"), metaVars[key]);
+  }
+
+  const senderName = fromName || "CS Formly";
+
+  console.log(`Sending autoresponder email to: ${to} from: ${fromUser} (${senderName})`);
+
+  await transporter.sendMail({
+    from: `"${senderName}" <${fromUser}>`,
+    to,
+    subject,
+    html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid #e1e8ed; }
+    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 30px 20px; text-align: center; color: white; }
+    .logo { font-size: 24px; font-weight: 800; letter-spacing: -1px; color: #ffffff; }
+    .logo span { color: rgba(255,255,255,0.7); font-weight: 400; }
+    .content { padding: 40px; color: #334155; line-height: 1.6; font-size: 16px; }
+    .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #edf1f7; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+    </div>
+    <div class="content">
+      ${html}
+    </div>
+    <div class="footer">
+      This email was sent via <strong>CS Formly</strong>.
+    </div>
+  </div>
+</body>
+</html>`,
+  });
+}
+
 module.exports = {
   parseNotificationEmails,
   buildSubmissionEmailHtml,
   sendSubmissionNotificationEmails,
+  sendAutoresponderEmail,
 };
 

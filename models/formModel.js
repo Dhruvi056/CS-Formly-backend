@@ -34,6 +34,10 @@ const formSchema = mongoose.Schema(
       customTemplateBody: { type: String, default: "" },
       customFromEmail: { type: String, default: "" },
       hideBranding: { type: Boolean, default: false },
+
+      autoresponderEnabled: { type: Boolean, default: false },
+      autoresponderSubject: { type: String, default: "Thank you for your submission!" },
+      autoresponderBody: { type: String, default: "We have received your submission. Thank you!" },
     },
     vendorId: {
       type: String,

@@ -26,6 +26,7 @@ const SmtpConfig = require("./models/smtpModel");
 const {
   parseNotificationEmails,
   sendSubmissionNotificationEmails,
+  sendAutoresponderEmail,
 } = require("./utils/submissionEmail");
 
 const {
@@ -330,6 +331,21 @@ async function handleFormSubmit(req, res) {
         customTemplateEnabled: mongoForm.settings?.customTemplateEnabled,
         customTemplateBody: mongoForm.settings?.customTemplateBody,
       });
+
+      // 2. Handle Autoresponder
+      if (mongoForm.settings?.autoresponderEnabled) {
+        await sendAutoresponderEmail({
+          transporter: finalTransporter,
+          fromUser: finalFromUser,
+          fromName: finalFromName,
+          formName: mongoForm.name,
+          formId,
+          cleanData,
+          metadata,
+          autoresponderSubject: mongoForm.settings?.autoresponderSubject,
+          autoresponderBody: mongoForm.settings?.autoresponderBody,
+        });
+      }
 
 
     } catch (emailError) {
