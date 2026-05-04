@@ -1,4 +1,6 @@
 const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
 
 function escapeHtml(s) {
   if (s == null) return "";
@@ -15,6 +17,47 @@ function parseNotificationEmails(raw) {
     .split(/[,;\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+}
+
+function processCidImages(html, attachments) {
+  let updatedHtml = html;
+  const imgRegex = /<img[^>]+src="([^">]+)"/g;
+  let match;
+
+  while ((match = imgRegex.exec(html)) !== null) {
+    const fullSrc = match[1];
+    console.log("Found image src:", fullSrc);
+    // Only process local /uploads URLs
+    if (fullSrc.includes("/uploads/")) {
+      try {
+        let fileName = fullSrc.split("/").pop();
+        // Clean fileName (remove query params or hashes if any)
+        fileName = fileName.split("?")[0].split("#")[0];
+        
+        const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
+        
+        console.log("Attempting to embed file:", filePath);
+        if (fs.existsSync(filePath)) {
+          const cid = crypto.randomBytes(16).toString("hex");
+          const content = fs.readFileSync(filePath);
+          
+          attachments.push({
+            filename: fileName,
+            content: content,
+            cid: cid
+          });
+          
+          updatedHtml = updatedHtml.replace(fullSrc, `cid:${cid}`);
+          console.log("Successfully embedded image with CID:", cid);
+        } else {
+          console.error("File does not exist for embedding:", filePath);
+        }
+      } catch (err) {
+        console.error("Error embedding CID image:", err);
+      }
+    }
+  }
+  return updatedHtml;
 }
 
 function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, metadata = {} }) {
@@ -123,6 +166,7 @@ async function sendSubmissionNotificationEmails({
   metadata = {},
   customTemplateEnabled,
   customTemplateBody,
+  attachments = [],
 }) {
   if (!recipients.length) {
     console.warn(`No recipients defined for form ${formId}. Skipping email notification.`);
@@ -190,6 +234,10 @@ async function sendSubmissionNotificationEmails({
     html = buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, metadata });
   }
 
+  // Process CID images for local testing
+  const finalAttachments = [...attachments];
+  html = processCidImages(html, finalAttachments);
+
   const subject = `New Submission - ${formName || formId} | CS Formly`;
 
   // ... (production code omitted for brevity in this view, but keeping logic)
@@ -203,6 +251,7 @@ async function sendSubmissionNotificationEmails({
       from: `"${senderName}" <${fromUser}>`,
       to,
       subject,
+      attachments: finalAttachments,
       html,
     });
   }
@@ -235,6 +284,9 @@ async function sendAutoresponderEmail({
   metadata = {},
   autoresponderSubject,
   autoresponderBody,
+  attachments = [],
+  staticAttachmentUrl = "",
+  staticAttachmentName = "",
 }) {
   const to = findSubmitterEmail(cleanData);
   if (!to) {
@@ -301,12 +353,37 @@ async function sendAutoresponderEmail({
 
   const senderName = fromName || "CS Formly";
 
+  // Process CID images for local testing
+  const finalAttachments = [...attachments];
+  
+  // Add static attachment if provided
+  if (staticAttachmentUrl) {
+    try {
+      let fileName = staticAttachmentUrl.split("/").pop();
+      fileName = fileName.split("?")[0].split("#")[0];
+      const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
+      
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath);
+        finalAttachments.push({
+          filename: staticAttachmentName || fileName,
+          content: content
+        });
+      }
+    } catch (err) {
+      console.error("Error adding static autoresponder attachment:", err);
+    }
+  }
+
+  const processedHtml = processCidImages(html, finalAttachments);
+
   console.log(`Sending autoresponder email to: ${to} from: ${fromUser} (${senderName})`);
 
   await transporter.sendMail({
     from: `"${senderName}" <${fromUser}>`,
     to,
     subject,
+    attachments: finalAttachments,
     html: `
 <!DOCTYPE html>
 <html>
@@ -328,7 +405,7 @@ async function sendAutoresponderEmail({
       <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
     </div>
     <div class="content">
-      ${html}
+      ${processedHtml}
     </div>
     <div class="footer">
       This email was sent via <strong>CS Formly</strong>.

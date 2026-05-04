@@ -38,6 +38,8 @@ const formSchema = mongoose.Schema(
       autoresponderEnabled: { type: Boolean, default: false },
       autoresponderSubject: { type: String, default: "Thank you for your submission!" },
       autoresponderBody: { type: String, default: "We have received your submission. Thank you!" },
+      autoresponderAttachmentUrl: { type: String, default: "" },
+      autoresponderAttachmentName: { type: String, default: "" },
     },
     vendorId: {
       type: String,

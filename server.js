@@ -8,6 +8,7 @@ const nodemailer = require("nodemailer");
 const multer = require("multer");
 const crypto = require("crypto");
 const cors = require("cors");
+const cloudinary = require("cloudinary").v2;
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -40,6 +41,17 @@ const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Configure Cloudinary
+if (!process.env.CLOUDINARY_API_KEY) {
+  console.error("WARNING: CLOUDINARY_API_KEY is missing from environment variables!");
+}
+
+cloudinary.config({
+  cloud_name: String(process.env.CLOUDINARY_CLOUD_NAME || ""),
+  api_key: String(process.env.CLOUDINARY_API_KEY || ""),
+  api_secret: String(process.env.CLOUDINARY_API_SECRET || ""),
+});
 
 // Preferred deployment structure:
 // backend/
@@ -86,6 +98,10 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.get("/health", (req, res) => res.json({ ok: true }));
+
+// Serve uploads and public assets
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+app.use(express.static(FRONTEND_DIR));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/forms", formRoutes);
@@ -318,6 +334,12 @@ async function handleFormSubmit(req, res) {
         ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress,
       };
 
+      const emailAttachments = allFiles.map((f) => ({
+        filename: f.originalname,
+        content: f.buffer,
+        contentType: f.mimetype,
+      }));
+
       await sendSubmissionNotificationEmails({
         transporter: finalTransporter,
         fromUser: finalFromUser,
@@ -330,6 +352,7 @@ async function handleFormSubmit(req, res) {
         metadata,
         customTemplateEnabled: mongoForm.settings?.customTemplateEnabled,
         customTemplateBody: mongoForm.settings?.customTemplateBody,
+        attachments: emailAttachments,
       });
 
       // 2. Handle Autoresponder
@@ -344,6 +367,9 @@ async function handleFormSubmit(req, res) {
           metadata,
           autoresponderSubject: mongoForm.settings?.autoresponderSubject,
           autoresponderBody: mongoForm.settings?.autoresponderBody,
+          staticAttachmentUrl: mongoForm.settings?.autoresponderAttachmentUrl,
+          staticAttachmentName: mongoForm.settings?.autoresponderAttachmentName,
+          attachments: emailAttachments,
         });
       }
 
@@ -377,21 +403,40 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 
   try {
-    const key = buildKey({
-      kind: "profile",
-      fileName: req.file.originalname || "profile",
-    });
+    // 1. Try Cloudinary first if configured
+    if (process.env.CLOUDINARY_API_KEY) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: "formly_editor_images" },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          uploadStream.end(req.file.buffer);
+        });
+        return res.json({ url: result.secure_url, key: result.public_id });
+      } catch (cErr) {
+        console.warn("Cloudinary failed, falling back to local storage:", cErr.message);
+      }
+    }
 
-    const { url } = await uploadBuffer({
-      key,
-      buffer: req.file.buffer,
-      contentType: req.file.mimetype || "application/octet-stream",
-      makePublic: UPLOADS_PUBLIC,
-    });
+    // 2. Fallback to Local Storage
+    const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, "_")}`;
+    const filePath = path.join(__dirname, "public/uploads", fileName);
+    
+    fs.writeFileSync(filePath, req.file.buffer);
+    
+    // Construct the URL based on the current host
+    const protocol = req.protocol;
+    const host = req.get("host");
+    const url = `${protocol}://${host}/uploads/${fileName}`;
 
-    return res.json({ url, key });
+    return res.json({ url, key: fileName });
   } catch (error) {
-    return res.status(500).json({ error: "Upload failed" });
+    console.error("Upload error:", error);
+    return res.status(500).json({ error: error.message || "Upload failed" });
   }
 });
 
