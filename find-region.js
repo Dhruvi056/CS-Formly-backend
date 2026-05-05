@@ -2,7 +2,7 @@ const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 require("dotenv").config();
 
 const regions = ["sfo3", "nyc3", "ams3", "sgp1", "fra1", "blr1", "syd1"];
-const bucketName = "dhruvir-cs";
+const bucketName = "" + process.env.SPACES_BUCKET;
 
 async function findBucket() {
   for (const region of regions) {

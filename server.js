@@ -8,7 +8,7 @@ const nodemailer = require("nodemailer");
 const multer = require("multer");
 const crypto = require("crypto");
 const cors = require("cors");
-const cloudinary = require("cloudinary").v2;
+const mongoose = require("mongoose");
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -41,17 +41,6 @@ const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
-
-// Configure Cloudinary
-if (!process.env.CLOUDINARY_API_KEY) {
-  console.error("WARNING: CLOUDINARY_API_KEY is missing from environment variables!");
-}
-
-cloudinary.config({
-  cloud_name: String(process.env.CLOUDINARY_CLOUD_NAME || ""),
-  api_key: String(process.env.CLOUDINARY_API_KEY || ""),
-  api_secret: String(process.env.CLOUDINARY_API_SECRET || ""),
-});
 
 // Preferred deployment structure:
 // backend/
@@ -99,8 +88,7 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// Serve uploads and public assets
-app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+// Serve frontend public assets
 app.use(express.static(FRONTEND_DIR));
 
 app.use("/api/auth", authRoutes);
@@ -179,6 +167,9 @@ async function handleFormSubmit(req, res) {
   if (!formId) {
     return res.status(400).json({ error: "Missing Form ID" });
   }
+  if (!mongoose.Types.ObjectId.isValid(String(formId))) {
+    return res.status(400).json({ error: "Invalid Form ID" });
+  }
 
   try {
     const cleanData = {};
@@ -243,12 +234,13 @@ async function handleFormSubmit(req, res) {
         const fieldName = file.fieldname || "file";
         const key = buildKey({ kind: "form", formId, fileName: originalName });
 
-        const { url } = await uploadBuffer({
+        const uploaded = await uploadBuffer({
           key,
           buffer: file.buffer,
           contentType: file.mimetype || "application/octet-stream",
           makePublic: UPLOADS_PUBLIC,
         });
+        const url = uploaded.url;
 
         if (cleanData[fieldName] === undefined) {
           cleanData[fieldName] = url;
@@ -286,7 +278,7 @@ async function handleFormSubmit(req, res) {
       process.env.FRONTEND_URL ||
       (req.headers.origin && String(req.headers.origin)) ||
       "";
-    
+
     if (dashboardBase.endsWith("/")) {
       dashboardBase = dashboardBase.slice(0, -1);
     }
@@ -298,7 +290,7 @@ async function handleFormSubmit(req, res) {
     try {
       // 1. Check if the user has a custom SMTP configuration
       const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user, isDefault: true }).lean();
-      
+
       let finalTransporter = transporter;
       let finalFromUser = process.env.EMAIL_USER;
       let finalFromName = "CS Formly";
@@ -401,56 +393,29 @@ async function handleFormSubmit(req, res) {
   }
 }
 
-// Profile Upload API (fallback path used by frontend if presigned upload fails)
+// Profile Upload API: direct upload to DigitalOcean Spaces
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
   try {
-    // 1. Try Cloudinary first if configured
-    if (process.env.CLOUDINARY_API_KEY) {
-      try {
-        const result = await new Promise((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            { folder: "formly_editor_images" },
-            (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
-            }
-          );
-          uploadStream.end(req.file.buffer);
-        });
-        return res.json({ url: result.secure_url, key: result.public_id });
-      } catch (cErr) {
-        console.warn("Cloudinary failed, falling back to local storage:", cErr.message);
-      }
-    }
-
-    // 2. Fallback to Local Storage
-    const uploadDir = path.join(__dirname, "public/uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, "_")}`;
-    const filePath = path.join(uploadDir, fileName);
-    
-    fs.writeFileSync(filePath, req.file.buffer);
-    
-    // Construct the URL based on the current host
-    // Support https behind proxies (like Nginx/Live Server)
-    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.get("host");
-    const url = `${protocol}://${host}/uploads/${fileName}`;
-
-    console.log("Local upload success:", url);
-    return res.json({ url, key: fileName });
+    const key = buildKey({
+      kind: "profile",
+      fileName: req.file.originalname || "file",
+    });
+    const uploaded = await uploadBuffer({
+      key,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype || "application/octet-stream",
+      makePublic: UPLOADS_PUBLIC,
+    });
+    return res.json({ url: uploaded.url, key: uploaded.key });
   } catch (error) {
     console.error("Upload error details:", error);
-    return res.status(500).json({ 
-      error: "Upload failed on server", 
-      details: error.message 
+    return res.status(500).json({
+      error: "Upload failed on DigitalOcean Spaces",
+      details: error.message
     });
   }
 });
@@ -579,7 +544,7 @@ app.get("*", (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-   console.log(`Backend running at http://0.0.0.0:${PORT}`);
+  console.log(`Backend running at http://0.0.0.0:${PORT}`);
   if (!IS_PRODUCTION && String(process.env.AUTO_OPEN_BROWSER || "") === "true") {
     const url = `http://localhost:${PORT}`;
     const opener =
@@ -588,7 +553,7 @@ app.listen(PORT, '0.0.0.0', () => {
         : process.platform === "darwin"
           ? `open "${url}"`
           : `xdg-open "${url}"`;
-    exec(opener, () => {});
+    exec(opener, () => { });
   }
 });
 

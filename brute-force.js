@@ -1,7 +1,7 @@
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 require("dotenv").config();
 
-const bucketNames = ["csformly", "cs-formly", "sycu-formly", "sycu", "dhruvir-cs"];
+const bucketNames = ["csformly", "cs-formly", "sycu-formly", "sycu",];
 const regions = ["sfo3", "nyc3"];
 
 async function bruteForce() {

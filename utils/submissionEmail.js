@@ -11,6 +11,129 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function valueToText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function renderDisplayValue(value, { linkClass = "", linkStyle = "" } = {}) {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => {
+        if (typeof v === "string" && v.startsWith("http")) {
+          const attrs = linkClass
+            ? ` class="${linkClass}"`
+            : linkStyle
+              ? ` style="${linkStyle}"`
+              : "";
+          return `<a href="${escapeHtml(v)}"${attrs}>View Attachment</a>`;
+        }
+        return escapeHtml(valueToText(v));
+      })
+      .join(", ");
+  }
+
+  if (typeof value === "string" && value.startsWith("http")) {
+    const attrs = linkClass
+      ? ` class="${linkClass}"`
+      : linkStyle
+        ? ` style="${linkStyle}"`
+        : "";
+    return `<a href="${escapeHtml(value)}"${attrs}>View Attachment</a>`;
+  }
+
+  return escapeHtml(valueToText(value));
+}
+
+function parseJsonIfPossible(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (_) {
+      return value;
+    }
+  }
+  return value;
+}
+
+function normalizeCleanDataForEmail(cleanData) {
+  const source = { ...(cleanData || {}) };
+  const payloadKey = Object.keys(source).find(
+    (k) => String(k).trim().toLowerCase() === "payload"
+  );
+  const payloadRaw = payloadKey ? source[payloadKey] : undefined;
+  const parsedPayload = parseJsonIfPossible(payloadRaw);
+
+  if (
+    parsedPayload &&
+    typeof parsedPayload === "object" &&
+    !Array.isArray(parsedPayload)
+  ) {
+    if (payloadKey) delete source[payloadKey];
+    for (const [k, v] of Object.entries(parsedPayload)) {
+      if (source[k] === undefined || source[k] === "") {
+        source[k] = v;
+      }
+    }
+  }
+
+  return source;
+}
+
+function looksLikeFileUrl(url) {
+  if (typeof url !== "string") return false;
+  const lower = url.toLowerCase();
+  if (!/^https?:\/\//.test(lower)) return false;
+  return (
+    /(\.pdf|\.doc|\.docx|\.xls|\.xlsx|\.ppt|\.pptx|\.txt|\.zip|\.rar|\.jpg|\.jpeg|\.png|\.webp)(\?|#|$)/.test(lower) ||
+    lower.includes(".digitaloceanspaces.com/forms/") ||
+    lower.includes("/uploads/")
+  );
+}
+
+function fileNameFromUrl(url, fallback = "attachment") {
+  try {
+    const u = new URL(url);
+    const raw = (u.pathname.split("/").pop() || fallback).trim();
+    return raw || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function collectUrlBackedAttachments(cleanData) {
+  const out = [];
+  const seen = new Set();
+
+  for (const [key, value] of Object.entries(cleanData || {})) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      if (typeof v !== "string") continue;
+      if (!looksLikeFileUrl(v)) continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      out.push({
+        filename: fileNameFromUrl(v, `${key || "attachment"}`),
+        path: v,
+      });
+    }
+  }
+
+  return out;
+}
+
 function parseNotificationEmails(raw) {
   if (!raw || typeof raw !== "string") return [];
   return raw
@@ -33,20 +156,20 @@ function processCidImages(html, attachments) {
         let fileName = fullSrc.split("/").pop();
         // Clean fileName (remove query params or hashes if any)
         fileName = fileName.split("?")[0].split("#")[0];
-        
+
         const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
-        
+
         console.log("Attempting to embed file:", filePath);
         if (fs.existsSync(filePath)) {
           const cid = crypto.randomBytes(16).toString("hex");
           const content = fs.readFileSync(filePath);
-          
+
           attachments.push({
             filename: fileName,
             content: content,
             cid: cid
           });
-          
+
           updatedHtml = updatedHtml.replace(fullSrc, `cid:${cid}`);
           console.log("Successfully embedded image with CID:", cid);
         } else {
@@ -62,7 +185,8 @@ function processCidImages(html, attachments) {
 
 function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, metadata = {} }) {
   const { submittedAt, ipAddress } = metadata;
-  const rows = Object.entries(cleanData)
+  const normalizedData = normalizeCleanDataForEmail(cleanData);
+  const rows = Object.entries(normalizedData)
     .map(([key, value]) => {
       let displayValue;
       if (Array.isArray(value)) {
@@ -70,13 +194,13 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
           .map((v) =>
             typeof v === "string" && v.startsWith("http")
               ? `<a href="${escapeHtml(v)}" class="file-link">View Attachment</a>`
-              : escapeHtml(v)
+              : escapeHtml(valueToText(v))
           )
           .join(", ");
       } else if (typeof value === "string" && value.startsWith("http")) {
         displayValue = `<a href="${escapeHtml(value)}" class="file-link">View Attachment</a>`;
       } else {
-        displayValue = escapeHtml(value);
+        displayValue = escapeHtml(valueToText(value));
       }
       return `
         <tr>
@@ -177,28 +301,18 @@ async function sendSubmissionNotificationEmails({
     return;
   }
 
+  const normalizedData = normalizeCleanDataForEmail(cleanData);
   let html;
   if (customTemplateEnabled && customTemplateBody) {
     html = customTemplateBody;
 
     // Support an {{AllFields}} macro that dynamically dumps all form fields
     if (html.includes('{{AllFields}}') || html.includes('{AllFields}')) {
-      const rowsHtml = Object.entries(cleanData)
+      const rowsHtml = Object.entries(normalizedData)
         .map(([key, value]) => {
-          let displayValue;
-          if (Array.isArray(value)) {
-            displayValue = value
-              .map((v) =>
-                typeof v === "string" && v.startsWith("http")
-                  ? `<a href="${escapeHtml(v)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`
-                  : escapeHtml(v)
-              )
-              .join(", ");
-          } else if (typeof value === "string" && value.startsWith("http")) {
-            displayValue = `<a href="${escapeHtml(value)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`;
-          } else {
-            displayValue = escapeHtml(value);
-          }
+          const displayValue = renderDisplayValue(value, {
+            linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
+          });
           return `
             <tr>
               <th style="text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px;">${escapeHtml(key)}</th>
@@ -206,18 +320,19 @@ async function sendSubmissionNotificationEmails({
             </tr>`;
         })
         .join("");
-        
+
       const allFieldsTable = `<table style="width: 100%; border-collapse: separate; border-spacing: 0 12px;">${rowsHtml}</table>`;
       html = html.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
     }
 
-    for (const key in cleanData) {
-      const val = cleanData[key];
+    for (const key in normalizedData) {
+      const val = normalizedData[key];
+      const safeVal = escapeHtml(valueToText(val));
       // support both {{key}} and {key}
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), val);
-      html = html.replace(new RegExp(`\\{${key}\\}`, 'gi'), val);
+      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
+      html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
     }
-    
+
     // Support built-in meta variables
     const metaVars = {
       FormName: formName || formId,
@@ -225,17 +340,24 @@ async function sendSubmissionNotificationEmails({
       SubmittedAt: metadata.submittedAt || new Date().toLocaleString(),
       IpAddress: metadata.ipAddress || "Unknown"
     };
-    
+
     for (const key in metaVars) {
       html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), metaVars[key]);
       html = html.replace(new RegExp(`\\{${key}\\}`, 'gi'), metaVars[key]);
     }
   } else {
-    html = buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, metadata });
+    html = buildSubmissionEmailHtml({
+      formName,
+      formId,
+      dashboardUrl,
+      cleanData: normalizedData,
+      metadata,
+    });
   }
 
   // Process CID images for local testing
-  const finalAttachments = [...attachments];
+  const urlBackedAttachments = collectUrlBackedAttachments(normalizedData);
+  const finalAttachments = [...attachments, ...urlBackedAttachments];
   html = processCidImages(html, finalAttachments);
 
   const subject = `New Submission - ${formName || formId} | CS Formly`;
@@ -299,22 +421,12 @@ async function sendAutoresponderEmail({
 
   // Support an {{AllFields}} macro
   if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
-    const rowsHtml = Object.entries(cleanData)
+    const normalizedData = normalizeCleanDataForEmail(cleanData);
+    const rowsHtml = Object.entries(normalizedData)
       .map(([key, value]) => {
-        let displayValue;
-        if (Array.isArray(value)) {
-          displayValue = value
-            .map((v) =>
-              typeof v === "string" && v.startsWith("http")
-                ? `<a href="${escapeHtml(v)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`
-                : escapeHtml(v)
-            )
-            .join(", ");
-        } else if (typeof value === "string" && value.startsWith("http")) {
-          displayValue = `<a href="${escapeHtml(value)}" style="color: #6571ff; text-decoration: none; font-weight: 600;">View Attachment</a>`;
-        } else {
-          displayValue = escapeHtml(value);
-        }
+        const displayValue = renderDisplayValue(value, {
+          linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
+        });
         return `
           <tr>
             <th style="text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px;">${escapeHtml(key)}</th>
@@ -328,14 +440,16 @@ async function sendAutoresponderEmail({
   }
 
   // Replace placeholders in body and subject
-  for (const key in cleanData) {
-    const val = cleanData[key];
+  const normalizedData = normalizeCleanDataForEmail(cleanData);
+  for (const key in normalizedData) {
+    const val = normalizedData[key];
+    const safeVal = escapeHtml(valueToText(val));
     const regex = new RegExp(`\\\\{\\\\{${key}\\\\}\\\\}`, "gi");
     const regexSimple = new RegExp(`\\\\{${key}\\\\}`, "gi");
-    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), val);
-    html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), val);
-    subject = subject.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), val);
-    subject = subject.replace(new RegExp(`\\{${key}\\}`, "gi"), val);
+    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
+    html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
+    subject = subject.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), valueToText(val));
+    subject = subject.replace(new RegExp(`\\{${key}\\}`, "gi"), valueToText(val));
   }
 
   // Support built-in meta variables
@@ -355,14 +469,14 @@ async function sendAutoresponderEmail({
 
   // Process CID images for local testing
   const finalAttachments = [...attachments];
-  
+
   // Add static attachment if provided
   if (staticAttachmentUrl) {
     try {
       let fileName = staticAttachmentUrl.split("/").pop();
       fileName = fileName.split("?")[0].split("#")[0];
       const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
-      
+
       if (fs.existsSync(filePath)) {
         const content = fs.readFileSync(filePath);
         finalAttachments.push({
