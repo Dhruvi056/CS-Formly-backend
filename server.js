@@ -282,10 +282,15 @@ async function handleFormSubmit(req, res) {
     const recipients = parseNotificationEmails(
       mongoForm.settings?.notificationEmail
     );
-    const dashboardBase =
+    let dashboardBase =
       process.env.FRONTEND_URL ||
       (req.headers.origin && String(req.headers.origin)) ||
       "";
+    
+    if (dashboardBase.endsWith("/")) {
+      dashboardBase = dashboardBase.slice(0, -1);
+    }
+
     const dashboardUrl = dashboardBase
       ? `${dashboardBase}/forms/${formId}`
       : `/forms/${formId}`;
@@ -480,10 +485,15 @@ app.post("/api/auth/reset-password", async (req, res) => {
 
     const requestBase =
       req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : null;
-    const baseUri =
+    let baseUri =
       (typeof origin === "string" && origin.startsWith("http") ? origin : null) ||
       process.env.FRONTEND_URL ||
       (IS_PRODUCTION ? requestBase : "http://localhost:3000");
+
+    if (baseUri && baseUri.endsWith("/")) {
+      baseUri = baseUri.slice(0, -1);
+    }
+
     const customResetLink = `${baseUri}/reset-password?token=${rawToken}`;
 
     if (process.env.NODE_ENV !== "production") {
