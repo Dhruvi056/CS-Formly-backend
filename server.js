@@ -42,7 +42,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-app.set('trust proxy', true);
+// Enable trust proxy for Cloudways/Nginx to correctly detect protocol (HTTP/HTTPS) and host
+app.set('trust proxy', 1);
 
 // Preferred deployment structure:
 // backend/
@@ -52,10 +53,13 @@ const DIST_DIR = path.join(__dirname, "dist");
 const LEGACY_CRA_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
 
 // Robust detection: use DIST_DIR if index.html exists there, otherwise fallback to frontend/build
-let FRONTEND_DIR = LEGACY_CRA_BUILD_DIR;
-if (fs.existsSync(path.join(DIST_DIR, "index.html"))) {
-  FRONTEND_DIR = DIST_DIR;
+let FRONTEND_DIR = DIST_DIR;
+if (!fs.existsSync(path.join(DIST_DIR, "index.html"))) {
+  console.warn(`[WARN] index.html not found in ${DIST_DIR}, falling back to legacy build dir`);
+  FRONTEND_DIR = LEGACY_CRA_BUILD_DIR;
 }
+
+console.log(`[INFO] Serving frontend from: ${FRONTEND_DIR}`);
 
 const INDEX_HTML = path.join(FRONTEND_DIR, "index.html");
 
@@ -90,11 +94,15 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// Serve frontend public assets
+// Serve frontend static assets explicitly to avoid SPA fallback issues
+app.use("/assets", express.static(path.join(FRONTEND_DIR, "assets"), { maxAge: '1d' }));
+app.use("/static", express.static(path.join(FRONTEND_DIR, "static"), { maxAge: '1d' }));
+
+// Serve all other frontend public assets
 app.use(express.static(FRONTEND_DIR));
 
-// Local Uploads Setup (Cloudways)
-const UPLOADS_DIR = path.join(__dirname, "public", "uploads");
+// Local Uploads Setup (Cloudways) - Renamed to local-storage to avoid conflicts
+const UPLOADS_DIR = path.join(__dirname, "local-storage");
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -549,11 +557,6 @@ app.post("/api/auth/reset-password/confirm", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-
-// Serve frontend static files if a build exists.
-if (fs.existsSync(FRONTEND_DIR)) {
-  app.use(express.static(FRONTEND_DIR));
-}
 
 // Catch all API requests that didn't match and return JSON 404
 app.all("/api/*", (req, res) => {

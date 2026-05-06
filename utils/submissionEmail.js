@@ -192,7 +192,7 @@ function processCidImages(html, attachments) {
         // Clean fileName (remove query params or hashes if any)
         fileName = fileName.split("?")[0].split("#")[0];
 
-        const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
+        const filePath = path.join(__dirname, "..", "local-storage", fileName);
 
         console.log("Attempting to embed file:", filePath);
         if (fs.existsSync(filePath)) {
