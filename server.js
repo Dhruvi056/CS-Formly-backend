@@ -42,6 +42,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+app.set('trust proxy', true);
+
 // Preferred deployment structure:
 // backend/
 //   server.js
@@ -90,6 +92,14 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 // Serve frontend public assets
 app.use(express.static(FRONTEND_DIR));
+
+// Local Uploads Setup (Cloudways)
+const UPLOADS_DIR = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+// Serve local uploads
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/forms", formRoutes);
@@ -233,13 +243,25 @@ async function handleFormSubmit(req, res) {
       });
     }
 
-    // Handle file uploads (if any) using DigitalOcean Spaces
+    // Handle file uploads (if any)
     if (allFiles.length > 0) {
       const uploadPromises = allFiles.map(async (file) => {
         const originalName = file.originalname || "file";
         const fieldName = file.fieldname || "file";
-        const key = buildKey({ kind: "form", formId, fileName: originalName });
 
+        // Local Storage implementation
+        const fileExt = path.extname(originalName);
+        const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+        const filePath = path.join(UPLOADS_DIR, fileName);
+
+        fs.writeFileSync(filePath, file.buffer);
+
+        // Construct public URL
+        const requestBase = req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : "";
+        const url = `${requestBase}/uploads/${fileName}`;
+
+        /* DigitalOcean Spaces implementation (Commented out for now)
+        const key = buildKey({ kind: "form", formId, fileName: originalName });
         const uploaded = await uploadBuffer({
           key,
           buffer: file.buffer,
@@ -247,6 +269,7 @@ async function handleFormSubmit(req, res) {
           makePublic: UPLOADS_PUBLIC,
         });
         const url = uploaded.url;
+        */
 
         if (cleanData[fieldName] === undefined) {
           cleanData[fieldName] = url;
@@ -399,28 +422,28 @@ async function handleFormSubmit(req, res) {
   }
 }
 
-// Profile Upload API: direct upload to DigitalOcean Spaces
+// Profile Upload API: local storage (Cloudways)
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
   try {
-    const key = buildKey({
-      kind: "profile",
-      fileName: req.file.originalname || "file",
-    });
-    const uploaded = await uploadBuffer({
-      key,
-      buffer: req.file.buffer,
-      contentType: req.file.mimetype || "application/octet-stream",
-      makePublic: UPLOADS_PUBLIC,
-    });
-    return res.json({ url: uploaded.url, key: uploaded.key });
+    const originalName = req.file.originalname || "file";
+    const fileExt = path.extname(originalName);
+    const fileName = `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+    const filePath = path.join(UPLOADS_DIR, fileName);
+
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    const requestBase = req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : "";
+    const url = `${requestBase}/uploads/${fileName}`;
+
+    return res.json({ url, key: fileName });
   } catch (error) {
-    console.error("Upload error details:", error);
+    console.error("Local upload error details:", error);
     return res.status(500).json({
-      error: "Upload failed on DigitalOcean Spaces",
+      error: "Upload failed on local server",
       details: error.message
     });
   }
