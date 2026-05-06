@@ -183,11 +183,33 @@ function collectUrlBackedAttachments(cleanData) {
 }
 
 function parseNotificationEmails(raw) {
-  if (!raw || typeof raw !== "string") return [];
-  return raw
-    .split(/[,;\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const normalizeSingle = (value) => {
+    if (!value) return [];
+
+    if (typeof value === "string") {
+      return value
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && emailRegex.test(s));
+    }
+
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => normalizeSingle(item));
+    }
+
+    if (typeof value === "object") {
+      // UI can send recipients as objects like { email }, { value }, etc.
+      return normalizeSingle(
+        value.email || value.value || value.address || value.recipient || ""
+      );
+    }
+
+    return [];
+  };
+
+  return [...new Set(normalizeSingle(raw))];
 }
 
 function processCidImages(html, attachments) {

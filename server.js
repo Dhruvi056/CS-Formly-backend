@@ -45,6 +45,41 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 // Enable trust proxy for Cloudways/Nginx to correctly detect protocol (HTTP/HTTPS) and host
 app.set('trust proxy', 1);
 
+function normalizedEnvBaseUrl(value) {
+  if (!value || typeof value !== "string") return "";
+  return value.trim().replace(/\/+$/, "");
+}
+
+function getPublicRequestBase(req) {
+  const publicBaseFromEnv = normalizedEnvBaseUrl(
+    process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL
+  );
+
+  const forwardedHostRaw = req.headers["x-forwarded-host"];
+  const forwardedProtoRaw = req.headers["x-forwarded-proto"];
+
+  const forwardedHost = Array.isArray(forwardedHostRaw)
+    ? forwardedHostRaw[0]
+    : String(forwardedHostRaw || "").split(",")[0].trim();
+  const forwardedProto = Array.isArray(forwardedProtoRaw)
+    ? forwardedProtoRaw[0]
+    : String(forwardedProtoRaw || "").split(",")[0].trim();
+
+  const host = forwardedHost || req.get("host") || "";
+  const proto = forwardedProto || req.protocol || "https";
+
+  // Avoid storing internal/private host URLs in DB.
+  if (/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host)) {
+    return publicBaseFromEnv || "";
+  }
+
+  if (host) {
+    return `${proto}://${host}`.replace(/\/+$/, "");
+  }
+
+  return publicBaseFromEnv || "";
+}
+
 // Preferred deployment structure:
 // backend/
 //   server.js
@@ -265,7 +300,7 @@ async function handleFormSubmit(req, res) {
         fs.writeFileSync(filePath, file.buffer);
 
         // Construct public URL
-        const requestBase = req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : "";
+        const requestBase = getPublicRequestBase(req);
         const url = `${requestBase}/uploads/${fileName}`;
 
         /* DigitalOcean Spaces implementation (Commented out for now)
@@ -444,7 +479,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     fs.writeFileSync(filePath, req.file.buffer);
 
-    const requestBase = req.protocol && req.get("host") ? `${req.protocol}://${req.get("host")}` : "";
+    const requestBase = getPublicRequestBase(req);
     const url = `${requestBase}/uploads/${fileName}`;
 
     return res.json({ url, key: fileName });
