@@ -16,9 +16,20 @@ function valueToText(value) {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
-    return JSON.stringify(value, null, 2);
-  } catch (_) {
+    // If it's an object, try to stringify it nicely
+    if (typeof value === "object") {
+      return JSON.stringify(value, null, 2);
+    }
     return String(value);
+  } catch (_) {
+    try {
+      // Fallback for objects that might have circular references
+      return Object.entries(value)
+        .map(([k, v]) => `${k}: ${typeof v === "object" ? "[Object]" : v}`)
+        .join(", ");
+    } catch (__) {
+      return "[Complex Object]";
+    }
   }
 }
 
@@ -69,22 +80,46 @@ function parseJsonIfPossible(value) {
 }
 
 function normalizeCleanDataForEmail(cleanData) {
-  const source = { ...(cleanData || {}) };
-  const payloadKey = Object.keys(source).find(
-    (k) => String(k).trim().toLowerCase() === "payload"
-  );
-  const payloadRaw = payloadKey ? source[payloadKey] : undefined;
-  const parsedPayload = parseJsonIfPossible(payloadRaw);
+  if (!cleanData || typeof cleanData !== "object" || Array.isArray(cleanData)) {
+    return cleanData || {};
+  }
 
-  if (
-    parsedPayload &&
-    typeof parsedPayload === "object" &&
-    !Array.isArray(parsedPayload)
-  ) {
-    if (payloadKey) delete source[payloadKey];
-    for (const [k, v] of Object.entries(parsedPayload)) {
-      if (source[k] === undefined || source[k] === "") {
-        source[k] = v;
+  const source = { ...cleanData };
+
+  // Helper to find key case-insensitively
+  const findKey = (obj, target) => {
+    return Object.keys(obj).find(
+      (k) => String(k).trim().toLowerCase() === target.toLowerCase()
+    );
+  };
+
+  // We want to flatten "payload" and "data" keys if they contain objects
+  const keysToFlatten = ["payload", "data"];
+  let changed = true;
+  let iterations = 0;
+
+  while (changed && iterations < 3) {
+    changed = false;
+    iterations++;
+
+    for (const targetKey of keysToFlatten) {
+      const actualKey = findKey(source, targetKey);
+      if (actualKey) {
+        const rawVal = source[actualKey];
+        const parsed = parseJsonIfPossible(rawVal);
+
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          // It's a valid object to flatten
+          delete source[actualKey];
+          changed = true;
+
+          for (const [k, v] of Object.entries(parsed)) {
+            // Only overwrite if current value is empty or undefined
+            if (source[k] === undefined || source[k] === "") {
+              source[k] = v;
+            }
+          }
+        }
       }
     }
   }
@@ -531,6 +566,8 @@ async function sendAutoresponderEmail({
 }
 
 module.exports = {
+  normalizeCleanDataForEmail,
+  valueToText,
   parseNotificationEmails,
   buildSubmissionEmailHtml,
   sendSubmissionNotificationEmails,

@@ -163,6 +163,12 @@ const transporter = nodemailer.createTransport({
 /* -------------------- FORM SUBMIT API -------------------- */
 async function handleFormSubmit(req, res) {
   const { formId } = req.params;
+  console.log("\n--- [DEBUG] Form Submission Received ---");
+  console.log("Form ID:", formId);
+  console.log("Content-Type:", req.headers["content-type"]);
+  console.log("Body Keys:", Object.keys(req.body || {}));
+  console.log("Files Count:", (req.files || []).length);
+  console.log("---------------------------------------\n");
 
   if (!formId) {
     return res.status(400).json({ error: "Missing Form ID" });

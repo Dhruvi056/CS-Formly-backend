@@ -3,6 +3,7 @@ const Form = require("../models/formModel");
 const User = require("../models/userModel");
 const mongoose = require("mongoose");
 const { findLatestKeyByFilename, publicUrlForKey, presignGetUrl } = require("../utils/spaces");
+const { normalizeCleanDataForEmail } = require("../utils/submissionEmail");
 
 const FILE_EXT_RE = /\.(pdf|doc|docx|xls|xlsx|csv|txt|png|jpe?g|gif|zip|rar|webp)$/i;
 
@@ -21,21 +22,7 @@ function tryParseJson(value) {
 }
 
 function normalizeSubmissionDataShape(rawData) {
-  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
-    return rawData;
-  }
-
-  // Support webhook-style payload rows:
-  // { triggerType: "form_submission", payload: { data: {...} } }
-  const payload = tryParseJson(rawData.payload);
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const payloadData = tryParseJson(payload.data);
-    if (payloadData && typeof payloadData === "object" && !Array.isArray(payloadData)) {
-      return payloadData;
-    }
-  }
-
-  return rawData;
+  return normalizeCleanDataForEmail(rawData);
 }
 
 function normalizeValueForClient(formId, fieldName, value) {
