@@ -84,7 +84,7 @@ function normalizeCleanDataForEmail(cleanData) {
     return cleanData || {};
   }
 
-  const source = { ...cleanData };
+  let source = { ...cleanData };
 
   // Helper to find key case-insensitively
   const findKey = (obj, target) => {
@@ -93,35 +93,48 @@ function normalizeCleanDataForEmail(cleanData) {
     );
   };
 
+  // Internal keys to filter out from the final email view
+  const internalKeys = [
+    "triggerType", "name", "siteId", "submittedAt", "id", "formId",
+    "formElementId", "pageId", "site_id", "form_id", "page_id"
+  ];
+
   // We want to flatten "payload" and "data" keys if they contain objects
   const keysToFlatten = ["payload", "data"];
-  let changed = true;
-  let iterations = 0;
+  let foundPrimaryData = false;
 
-  while (changed && iterations < 3) {
-    changed = false;
-    iterations++;
+  for (const targetKey of keysToFlatten) {
+    const actualKey = findKey(source, targetKey);
+    if (actualKey) {
+      const rawVal = source[actualKey];
+      const parsed = parseJsonIfPossible(rawVal);
 
-    for (const targetKey of keysToFlatten) {
-      const actualKey = findKey(source, targetKey);
-      if (actualKey) {
-        const rawVal = source[actualKey];
-        const parsed = parseJsonIfPossible(rawVal);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        // It's a valid object to flatten.
+        // If we find "data" or "payload", it's likely the actual form content.
+        delete source[actualKey];
+        foundPrimaryData = true;
 
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          // It's a valid object to flatten
-          delete source[actualKey];
-          changed = true;
-
-          for (const [k, v] of Object.entries(parsed)) {
-            // Only overwrite if current value is empty or undefined
-            if (source[k] === undefined || source[k] === "") {
-              source[k] = v;
-            }
+        for (const [k, v] of Object.entries(parsed)) {
+          // Only overwrite if current value is empty or undefined
+          if (source[k] === undefined || source[k] === "") {
+            source[k] = v;
           }
         }
       }
     }
+  }
+
+  // If we found primary data (like from Webflow), we should be more aggressive 
+  // about filtering out the outer metadata that Webflow sends.
+  if (foundPrimaryData) {
+    const filtered = {};
+    for (const [k, v] of Object.entries(source)) {
+      if (!internalKeys.some(ik => ik.toLowerCase() === k.toLowerCase())) {
+        filtered[k] = v;
+      }
+    }
+    return filtered;
   }
 
   return source;
@@ -251,35 +264,35 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid #e1e8ed; }
-    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 40px 20px; text-align: center; color: white; }
-    .logo { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin-bottom: 5px; color: #ffffff; }
-    .logo span { color: rgba(255,255,255,0.7); font-weight: 400; }
-    .title { font-size: 16px; font-weight: 600; letter-spacing: 2px; opacity: 0.8; margin-top: 10px; }
+    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f6f9fc; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .header { background-color: #0f172a; padding: 30px 20px; text-align: center; color: white; }
+    .logo { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
+    .logo span { color: #ffffff; }
+    .subtitle { font-size: 14px; opacity: 0.7; font-weight: 400; }
     .content { padding: 40px; }
-    .form-info { background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
-    .form-name { font-size: 18px; font-weight: 700; color: #060c17; margin-bottom: 5px; }
-    .form-url { font-size: 13px; color: #6571ff; text-decoration: none; word-break: break-all; }
-    .submission-data { width: 100%; border-collapse: separate; border-spacing: 0 12px; }
-    .submission-data th { text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px; }
-    .submission-data td { padding-bottom: 12px; border-bottom: 1px solid #edf1f7; color: #060c17; font-size: 15px; font-weight: 500; word-break: break-all; }
-    .meta-section { margin-top: 30px; padding-top: 20px; border-top: 2px dashed #edf1f7; }
-    .meta-table { width: 100%; font-size: 13px; color: #7987a1; }
+    .form-info { background-color: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 40px; border: 1px solid #f1f5f9; }
+    .form-name { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .form-url { font-size: 13px; color: #6366f1; text-decoration: none; word-break: break-all; opacity: 0.8; }
+    .submission-data { width: 100%; border-collapse: collapse; }
+    .submission-data th { text-align: left; vertical-align: top; padding: 16px 0 8px 0; color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; width: 30%; letter-spacing: 0.05em; }
+    .submission-data td { padding: 16px 0 12px 0; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-size: 14px; font-weight: 500; word-break: break-all; }
+    .meta-section { margin-top: 40px; padding-top: 20px; border-top: 1px dashed #e2e8f0; }
+    .meta-table { width: 100%; font-size: 12px; color: #94a3b8; }
     .meta-table td { padding: 4px 0; }
-    .meta-label { font-weight: 600; width: 40%; }
-    .meta-value { color: #060c17; text-align: right; }
-    .footer { background-color: #f8f9fa; padding: 30px; text-align: center; font-size: 13px; color: #aeb7c5; border-top: 1px solid #edf1f7; }
-    .btn { display: inline-block; padding: 16px 36px; background-color: #6571ff; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(101, 113, 255, 0.4); transition: all 0.2s ease; }
-    .btn-container { text-align: center; padding-top: 40px; padding-bottom: 10px; }
-    .file-link { color: #6571ff; text-decoration: none; font-weight: 600; }
+    .meta-label { font-weight: 500; width: 30%; }
+    .meta-value { color: #64748b; text-align: right; }
+    .footer { padding: 30px; text-align: center; font-size: 12px; color: #94a3b8; background-color: #ffffff; }
+    .btn-container { text-align: center; padding-top: 40px; }
+    .btn { display: inline-block; padding: 12px 24px; background-color: #6366f1; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2); }
+    .file-link { color: #6366f1; text-decoration: underline; font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
-      <div class="title">New Submission</div>
+      <div class="logo">CS Formly</div>
+      <div class="subtitle">New Submission</div>
     </div>
     <div class="content">
       <div class="form-info">
