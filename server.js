@@ -50,6 +50,29 @@ function normalizedEnvBaseUrl(value) {
   return value.trim().replace(/\/+$/, "");
 }
 
+function isLocalHostLikeUrl(value) {
+  if (!value || typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value);
+    return /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+function resolveDashboardBase(req) {
+  const publicBase = normalizedEnvBaseUrl(process.env.PUBLIC_BASE_URL);
+  const frontendBase = normalizedEnvBaseUrl(process.env.FRONTEND_URL);
+  const originBase = normalizedEnvBaseUrl(req.headers.origin);
+  const requestBase = normalizedEnvBaseUrl(getPublicRequestBase(req));
+
+  if (publicBase) return publicBase;
+  if (requestBase && !isLocalHostLikeUrl(requestBase)) return requestBase;
+  if (originBase && !isLocalHostLikeUrl(originBase)) return originBase;
+  if (frontendBase && !isLocalHostLikeUrl(frontendBase)) return frontendBase;
+  return requestBase || originBase || frontendBase || "";
+}
+
 function getPublicRequestBase(req) {
   const publicBaseFromEnv = normalizedEnvBaseUrl(
     process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL
@@ -346,18 +369,10 @@ async function handleFormSubmit(req, res) {
     const recipients = parseNotificationEmails(
       mongoForm.settings?.notificationEmail
     );
-    let dashboardBase =
-      process.env.FRONTEND_URL ||
-      (req.headers.origin && String(req.headers.origin)) ||
-      "";
-
-    if (dashboardBase.endsWith("/")) {
-      dashboardBase = dashboardBase.slice(0, -1);
-    }
-
-    const dashboardUrl = dashboardBase
-      ? `${dashboardBase}/forms/${formId}`
-      : `/forms/${formId}`;
+    const dashboardBase = resolveDashboardBase(req);
+    const dashboardPath = `/forms/${formId}`;
+    const loginPath = `/login?redirect=${encodeURIComponent(dashboardPath)}`;
+    const dashboardUrl = dashboardBase ? `${dashboardBase}${loginPath}` : loginPath;
 
     try {
       // 1. Check if the user has a custom SMTP configuration

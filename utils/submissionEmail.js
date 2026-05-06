@@ -84,7 +84,7 @@ function normalizeCleanDataForEmail(cleanData) {
     return cleanData || {};
   }
 
-  let source = { ...cleanData };
+  const source = { ...cleanData };
 
   // Helper to find key case-insensitively
   const findKey = (obj, target) => {
@@ -93,48 +93,35 @@ function normalizeCleanDataForEmail(cleanData) {
     );
   };
 
-  // Internal keys to filter out from the final email view
-  const internalKeys = [
-    "triggerType", "name", "siteId", "submittedAt", "id", "formId",
-    "formElementId", "pageId", "site_id", "form_id", "page_id"
-  ];
-
   // We want to flatten "payload" and "data" keys if they contain objects
   const keysToFlatten = ["payload", "data"];
-  let foundPrimaryData = false;
+  let changed = true;
+  let iterations = 0;
 
-  for (const targetKey of keysToFlatten) {
-    const actualKey = findKey(source, targetKey);
-    if (actualKey) {
-      const rawVal = source[actualKey];
-      const parsed = parseJsonIfPossible(rawVal);
+  while (changed && iterations < 3) {
+    changed = false;
+    iterations++;
 
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        // It's a valid object to flatten.
-        // If we find "data" or "payload", it's likely the actual form content.
-        delete source[actualKey];
-        foundPrimaryData = true;
+    for (const targetKey of keysToFlatten) {
+      const actualKey = findKey(source, targetKey);
+      if (actualKey) {
+        const rawVal = source[actualKey];
+        const parsed = parseJsonIfPossible(rawVal);
 
-        for (const [k, v] of Object.entries(parsed)) {
-          // Only overwrite if current value is empty or undefined
-          if (source[k] === undefined || source[k] === "") {
-            source[k] = v;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          // It's a valid object to flatten
+          delete source[actualKey];
+          changed = true;
+
+          for (const [k, v] of Object.entries(parsed)) {
+            // Only overwrite if current value is empty or undefined
+            if (source[k] === undefined || source[k] === "") {
+              source[k] = v;
+            }
           }
         }
       }
     }
-  }
-
-  // If we found primary data (like from Webflow), we should be more aggressive 
-  // about filtering out the outer metadata that Webflow sends.
-  if (foundPrimaryData) {
-    const filtered = {};
-    for (const [k, v] of Object.entries(source)) {
-      if (!internalKeys.some(ik => ik.toLowerCase() === k.toLowerCase())) {
-        filtered[k] = v;
-      }
-    }
-    return filtered;
   }
 
   return source;
@@ -183,33 +170,11 @@ function collectUrlBackedAttachments(cleanData) {
 }
 
 function parseNotificationEmails(raw) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  const normalizeSingle = (value) => {
-    if (!value) return [];
-
-    if (typeof value === "string") {
-      return value
-        .split(/[,;\n]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0 && emailRegex.test(s));
-    }
-
-    if (Array.isArray(value)) {
-      return value.flatMap((item) => normalizeSingle(item));
-    }
-
-    if (typeof value === "object") {
-      // UI can send recipients as objects like { email }, { value }, etc.
-      return normalizeSingle(
-        value.email || value.value || value.address || value.recipient || ""
-      );
-    }
-
-    return [];
-  };
-
-  return [...new Set(normalizeSingle(raw))];
+  if (!raw || typeof raw !== "string") return [];
+  return raw
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
 }
 
 function processCidImages(html, attachments) {
@@ -286,54 +251,62 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f6f9fc; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .header { background-color: #0f172a; padding: 30px 20px; text-align: center; color: white; }
-    .logo { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
-    .logo span { color: #ffffff; }
-    .subtitle { font-size: 14px; opacity: 0.7; font-weight: 400; }
-    .content { padding: 40px; }
-    .form-info { background-color: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 40px; border: 1px solid #f1f5f9; }
-    .form-name { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-    .form-url { font-size: 13px; color: #6366f1; text-decoration: none; word-break: break-all; opacity: 0.8; }
-    .submission-data { width: 100%; border-collapse: collapse; }
-    .submission-data th { text-align: left; vertical-align: top; padding: 16px 0 8px 0; color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; width: 30%; letter-spacing: 0.05em; }
-    .submission-data td { padding: 16px 0 12px 0; border-bottom: 1px solid #f1f5f9; color: #1e293b; font-size: 14px; font-weight: 500; word-break: break-all; }
-    .meta-section { margin-top: 40px; padding-top: 20px; border-top: 1px dashed #e2e8f0; }
-    .meta-table { width: 100%; font-size: 12px; color: #94a3b8; }
-    .meta-table td { padding: 4px 0; }
-    .meta-label { font-weight: 500; width: 30%; }
-    .meta-value { color: #64748b; text-align: right; }
-    .footer { padding: 30px; text-align: center; font-size: 12px; color: #94a3b8; background-color: #ffffff; }
-    .btn-container { text-align: center; padding-top: 40px; }
-    .btn { display: inline-block; padding: 12px 24px; background-color: #6366f1; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2); }
-    .file-link { color: #6366f1; text-decoration: underline; font-weight: 600; }
+    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f8; margin: 0; padding: 20px 0; color: #111827; }
+    .container { max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 34px 24px 28px; text-align: center; color: white; }
+    .logo { font-size: 32px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 8px; color: #ffffff; }
+    .logo span { color: rgba(255,255,255,0.78); font-weight: 500; }
+    .title { font-size: 12px; font-weight: 600; letter-spacing: 2.5px; opacity: 0.95; text-transform: uppercase; }
+    .content { padding: 24px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+    .card-inner { padding: 14px 16px; }
+    .card-title { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #111827; }
+    .card-link { font-size: 12px; color: #4f46e5; text-decoration: none; word-break: break-all; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { padding: 10px 0; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+    .table tr:last-child th, .table tr:last-child td { border-bottom: 0; }
+    .table th { width: 38%; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; padding-right: 14px; }
+    .table td { color: #111827; font-size: 14px; font-weight: 500; word-break: break-word; }
+    .meta-section { margin-top: 6px; border-top: 1px dashed #e5e7eb; padding-top: 10px; }
+    .meta-row { display: table; width: 100%; font-size: 12px; color: #6b7280; margin: 6px 0; }
+    .meta-label, .meta-value { display: table-cell; }
+    .meta-label { font-weight: 700; }
+    .meta-value { color: #111827; text-align: right; }
+    .footer { background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eef2f7; }
+    .btn { display: inline-block; padding: 12px 20px; background-color: #5b63f6; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }
+    .btn-container { text-align: center; padding-top: 14px; }
+    .file-link { color: #6571ff; text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo">CS Formly</div>
-      <div class="subtitle">New Submission</div>
+      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+      <div class="title">New Submission</div>
     </div>
     <div class="content">
-      <div class="form-info">
-        <div class="form-name">${escapeHtml(formName || formId)}</div>
-        <a href="${escapeHtml(dashboardUrl)}" class="form-url">${escapeHtml(dashboardUrl)}</a>
+      <div class="card">
+        <div class="card-inner">
+          <h2 class="card-title">${escapeHtml(formName || formId)}</h2>
+          <a href="${escapeHtml(dashboardUrl)}" class="card-link">${escapeHtml(dashboardUrl)}</a>
+        </div>
       </div>
-      <table class="submission-data">${rows}</table>
-      
+
+      <div class="card">
+        <div class="card-inner">
+          <table class="table">${rows}</table>
+        </div>
+      </div>
+
       <div class="meta-section">
-        <table class="meta-table">
-          <tr>
-            <td class="meta-label">Submitted At</td>
-            <td class="meta-value">${escapeHtml(submittedAt || new Date().toLocaleString())}</td>
-          </tr>
-          <tr>
-            <td class="meta-label">IP Address</td>
-            <td class="meta-value">${escapeHtml(ipAddress || "Unknown")}</td>
-          </tr>
-        </table>
+        <div class="meta-row">
+          <span class="meta-label">Submitted At</span>
+          <span class="meta-value">${escapeHtml(submittedAt || new Date().toLocaleString())}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">IP Address</span>
+          <span class="meta-value">${escapeHtml(ipAddress || "Unknown")}</span>
+        </div>
       </div>
 
       <div class="btn-container">
