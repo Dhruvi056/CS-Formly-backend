@@ -573,8 +573,9 @@ async function sendAutoresponderEmail({
 
   const senderName = fromName || "CS Formly";
 
-  // Process CID images for local testing
-  const finalAttachments = [...attachments];
+  // For autoresponder, do NOT include submitter-uploaded form files.
+  // Only configured autoresponder attachments (id-based/default) and CID embeds should be attached.
+  const finalAttachments = [];
   const normalizedRules = normalizeAttachmentRules(attachmentRules);
   const submissionRuleKey = getRuleKeyFromSubmission(cleanData);
   const allowedRuleOrigin = "https://concatstring-new.webflow.io";
@@ -595,14 +596,22 @@ async function sendAutoresponderEmail({
     try {
       let fileName = effectiveAttachmentUrl.split("/").pop();
       fileName = fileName.split("?")[0].split("#")[0];
-      const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
+      const candidates = [
+        path.join(__dirname, "..", "local-storage", fileName),
+        path.join(__dirname, "..", "public", "uploads", fileName),
+      ];
+      const resolvedPath = candidates.find((p) => fs.existsSync(p));
 
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath);
+      if (resolvedPath) {
+        const content = fs.readFileSync(resolvedPath);
         finalAttachments.push({
           filename: effectiveAttachmentName || fileName,
           content: content
         });
+      } else {
+        console.warn(
+          `Autoresponder attachment not found on disk for ${fileName}. Tried: ${candidates.join(", ")}`
+        );
       }
     } catch (err) {
       console.error("Error adding static autoresponder attachment:", err);

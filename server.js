@@ -456,7 +456,6 @@ async function handleFormSubmit(req, res) {
           staticAttachmentUrl: mongoForm.settings?.autoresponderAttachmentUrl,
           staticAttachmentName: mongoForm.settings?.autoresponderAttachmentName,
           attachmentRules: mongoForm.settings?.autoresponderAttachmentRules,
-          attachments: emailAttachments,
         });
       }
 
