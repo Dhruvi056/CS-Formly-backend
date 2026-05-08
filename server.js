@@ -416,6 +416,8 @@ async function handleFormSubmit(req, res) {
           hour12: true,
         }),
         ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress,
+        requestOrigin: req.headers.origin || "",
+        requestReferer: req.headers.referer || "",
       };
 
       const emailAttachments = allFiles.map((f) => ({
@@ -453,6 +455,7 @@ async function handleFormSubmit(req, res) {
           autoresponderBody: mongoForm.settings?.autoresponderBody,
           staticAttachmentUrl: mongoForm.settings?.autoresponderAttachmentUrl,
           staticAttachmentName: mongoForm.settings?.autoresponderAttachmentName,
+          attachmentRules: mongoForm.settings?.autoresponderAttachmentRules,
           attachments: emailAttachments,
         });
       }

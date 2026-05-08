@@ -124,6 +124,14 @@ function normalizeCleanDataForEmail(cleanData) {
     }
   }
 
+  // Filter out internal fields we don't want to show in emails
+  const keysToIgnore = ["cf-turnstile-response", "g-recaptcha-response", "_gotcha"];
+  for (const key of Object.keys(source)) {
+    if (keysToIgnore.some(k => k.toLowerCase() === key.toLowerCase())) {
+      delete source[key];
+    }
+  }
+
   return source;
 }
 
@@ -159,10 +167,28 @@ function collectUrlBackedAttachments(cleanData) {
       if (!looksLikeFileUrl(v)) continue;
       if (seen.has(v)) continue;
       seen.add(v);
-      out.push({
+
+      const item = {
         filename: fileNameFromUrl(v, `${key || "attachment"}`),
         path: v,
-      });
+      };
+
+      // Optimization: if it's a local /uploads/ URL, use the direct file path
+      // instead of making nodemailer fetch it via HTTP (which might 404)
+      if (v.includes("/uploads/")) {
+        try {
+          let fileName = v.split("/").pop();
+          fileName = fileName.split("?")[0].split("#")[0];
+          const localPath = path.join(__dirname, "..", "local-storage", fileName);
+          if (fs.existsSync(localPath)) {
+            item.path = localPath;
+          }
+        } catch (err) {
+          console.error("Error resolving local path for attachment:", err);
+        }
+      }
+
+      out.push(item);
     }
   }
 
@@ -439,6 +465,42 @@ function findSubmitterEmail(cleanData) {
   return null;
 }
 
+function getRuleKeyFromSubmission(cleanData) {
+  if (!cleanData || typeof cleanData !== "object") return "";
+  const candidates = ["id", "Id", "ID", "planId", "PlanId", "packageId", "PackageId"];
+  for (const key of candidates) {
+    const value = cleanData[key];
+    if (value === undefined || value === null) continue;
+    const normalized = String(value).trim();
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function normalizeAttachmentRules(rules) {
+  if (!Array.isArray(rules)) return [];
+  return rules
+    .map((r) => ({
+      key: String(r?.key || "").trim(),
+      attachmentUrl: String(r?.attachmentUrl || "").trim(),
+      attachmentName: String(r?.attachmentName || "").trim(),
+    }))
+    .filter((r) => r.key && r.attachmentUrl);
+}
+
+function normalizeOriginFromMetadata(metadata = {}) {
+  const directOrigin = String(metadata.requestOrigin || "").trim();
+  if (directOrigin) return directOrigin.replace(/\/+$/, "");
+
+  const referer = String(metadata.requestReferer || "").trim();
+  if (!referer) return "";
+  try {
+    return new URL(referer).origin.replace(/\/+$/, "");
+  } catch (_) {
+    return "";
+  }
+}
+
 async function sendAutoresponderEmail({
   transporter,
   fromUser,
@@ -452,6 +514,7 @@ async function sendAutoresponderEmail({
   attachments = [],
   staticAttachmentUrl = "",
   staticAttachmentName = "",
+  attachmentRules = [],
 }) {
   const to = findSubmitterEmail(cleanData);
   if (!to) {
@@ -512,18 +575,32 @@ async function sendAutoresponderEmail({
 
   // Process CID images for local testing
   const finalAttachments = [...attachments];
+  const normalizedRules = normalizeAttachmentRules(attachmentRules);
+  const submissionRuleKey = getRuleKeyFromSubmission(cleanData);
+  const allowedRuleOrigin = "https://concatstring-new.webflow.io";
+  const requestOrigin = normalizeOriginFromMetadata(metadata);
+  const canUseIdBasedRules = requestOrigin === allowedRuleOrigin;
+  let selectedRule = null;
+  if (canUseIdBasedRules && submissionRuleKey && normalizedRules.length) {
+    selectedRule =
+      normalizedRules.find(
+        (rule) => rule.key.toLowerCase() === submissionRuleKey.toLowerCase()
+      ) || null;
+  }
 
   // Add static attachment if provided
-  if (staticAttachmentUrl) {
+  const effectiveAttachmentUrl = selectedRule?.attachmentUrl || staticAttachmentUrl;
+  const effectiveAttachmentName = selectedRule?.attachmentName || staticAttachmentName;
+  if (effectiveAttachmentUrl) {
     try {
-      let fileName = staticAttachmentUrl.split("/").pop();
+      let fileName = effectiveAttachmentUrl.split("/").pop();
       fileName = fileName.split("?")[0].split("#")[0];
       const filePath = path.join(__dirname, "..", "public", "uploads", fileName);
 
       if (fs.existsSync(filePath)) {
         const content = fs.readFileSync(filePath);
         finalAttachments.push({
-          filename: staticAttachmentName || fileName,
+          filename: effectiveAttachmentName || fileName,
           content: content
         });
       }

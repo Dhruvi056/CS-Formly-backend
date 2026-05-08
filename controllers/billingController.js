@@ -25,6 +25,38 @@ function getFrontendUrl() {
   ).replace(/\/$/, "");
 }
 
+function isLocalhostUrl(value = "") {
+  try {
+    const parsed = new URL(String(value));
+    return /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeUrl(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function getFrontendUrlFromRequest(req) {
+  const envUrl = normalizeUrl(getFrontendUrl());
+  const origin = normalizeUrl(req.headers?.origin || "");
+  const referer = normalizeUrl(req.headers?.referer || "");
+  const refererOrigin = (() => {
+    if (!referer) return "";
+    try {
+      return normalizeUrl(new URL(referer).origin);
+    } catch {
+      return "";
+    }
+  })();
+
+  if (origin && !isLocalhostUrl(origin)) return origin;
+  if (refererOrigin && !isLocalhostUrl(refererOrigin)) return refererOrigin;
+  if (envUrl && !isLocalhostUrl(envUrl)) return envUrl;
+  return envUrl || origin || refererOrigin || "http://localhost:3001";
+}
+
 async function applyPlanFromSession(session) {
   const userId = session.metadata?.userId;
   const plan = session.metadata?.plan;
@@ -121,7 +153,7 @@ const createCheckoutSession = async (req, res) => {
       console.log("createCheckoutSession: Customer updated", stripeCustomerId);
     }
 
-    const base = getFrontendUrl();
+    const base = getFrontendUrlFromRequest(req);
     const sessionOptions = {
       mode: mode,
       line_items: [{ price: priceId, quantity: 1 }],
