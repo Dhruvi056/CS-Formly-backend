@@ -6,46 +6,46 @@
   // </form>
   // <script src="/embed-form.js"></script>
 
-  const TOAST_ID = "__firebase_form_toast__";
+  // const TOAST_ID = "__firebase_form_toast__";
   const FORMS_ATTACHED = new WeakSet();
 
   const SCRIPT_URL = document.currentScript?.src || "";
   const BASE_URL = SCRIPT_URL.split("/embed-form.js")[0];
 
-  function ensureToastContainer() {
-    let t = document.getElementById(TOAST_ID);
-    if (!t) {
-      t = document.createElement("div");
-      t.id = TOAST_ID;
-      t.style.position = "fixed";
-      t.style.top = "20px";
-      t.style.right = "20px";
-      t.style.padding = "12px 16px";
-      t.style.borderRadius = "8px";
-      t.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)";
-      t.style.background = "#e8f5e9";
-      t.style.color = "#166534";
-      t.style.zIndex = "9999";
-      t.style.display = "none";
-      t.style.maxWidth = "320px";
-      t.style.fontFamily = "Arial, sans-serif";
-      t.style.fontSize = "14px";
-      document.body.appendChild(t);
-    }
-    return t;
-  }
+  // function ensureToastContainer() {
+  //   let t = document.getElementById(TOAST_ID);
+  //   if (!t) {
+  //     t = document.createElement("div");
+  //     t.id = TOAST_ID;
+  //     t.style.position = "fixed";
+  //     t.style.top = "20px";
+  //     t.style.right = "20px";
+  //     t.style.padding = "12px 16px";
+  //     t.style.borderRadius = "8px";
+  //     t.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)";
+  //     t.style.background = "#e8f5e9";
+  //     t.style.color = "#166534";
+  //     t.style.zIndex = "9999";
+  //     t.style.display = "none";
+  //     t.style.maxWidth = "320px";
+  //     t.style.fontFamily = "Arial, sans-serif";
+  //     t.style.fontSize = "14px";
+  //     document.body.appendChild(t);
+  //   }
+  //   return t;
+  // }
 
-  function showToast(msg, success) {
-    const t = ensureToastContainer();
-    t.textContent = msg;
-    t.style.background = success ? "#e8f5e9" : "#fee2e2";
-    t.style.color = success ? "#166534" : "#991b1b";
-    t.style.display = "block";
-    clearTimeout(t._timer);
-    t._timer = setTimeout(() => {
-      t.style.display = "none";
-    }, 4000);
-  }
+  // function showToast(msg, success) {
+  //   const t = ensureToastContainer();
+  //   t.textContent = msg;
+  //   t.style.background = success ? "#e8f5e9" : "#fee2e2";
+  //   t.style.color = success ? "#166534" : "#991b1b";
+  //   t.style.display = "block";
+  //   clearTimeout(t._timer);
+  //   t._timer = setTimeout(() => {
+  //     t.style.display = "none";
+  //   }, 4000);
+  // }
 
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -161,13 +161,13 @@
         }
       } catch (_) { }
 
-      showToast(ok ? msg : msg, ok);
+      // showToast(ok ? msg : msg, ok);
 
       if (ok) form.reset();
 
     } catch (err) {
       console.error(" Form submission error:", err);
-      showToast("Network error: " + err.message, false);
+      // showToast("Network error: " + err.message, false);
     }
   }
 
