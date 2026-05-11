@@ -467,10 +467,10 @@ async function handleFormSubmit(req, res) {
     const { name, fname, lname } = cleanData;
     const fullName = name || [fname, lname].filter(Boolean).join(" ");
     const successPayload = {
-      success: true,
-      message: fullName
-        ? `Form submitted successfully. Thank you, ${fullName}!`
-        : "Form submitted successfully",
+      success: true
+      // message: fullName
+      //   ? `Form submitted successfully. Thank you, ${fullName}!`
+      //   : "Form submitted successfully",
     };
     const acceptsHeader = req.headers.accept || "";
     const wantsJson = acceptsHeader.includes("application/json");

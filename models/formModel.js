@@ -25,7 +25,7 @@ const formSchema = mongoose.Schema(
       notificationEmail: String,
       successMessage: {
         type: String,
-        default: "Form submitted successfully!",
+        default: "",
       },
       redirectTo: String,
       /** Pro / Business only (see planLimits.planAllowsProOnlySettings) */

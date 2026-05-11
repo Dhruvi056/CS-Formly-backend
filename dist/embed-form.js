@@ -56,7 +56,7 @@
     });
   }
 
-  async function handleSubmit(e) {
+   async function handleSubmit(e) {
     const form = e.target;
 
     // Support both data-form-id and action=".../api/forms/<id>"
@@ -150,18 +150,20 @@
         });
       }
 
-      let msg = "Submitted!";
-      let ok = res.ok;
+      const ok = res.ok;
       try {
-        const json = await res.json();
-        if (json.code === "SUBMISSION_LIMIT_REACHED") {
-          msg = `⚠️ Submission limit reached (${json.limit} submissions). Please contact the site owner.`;
-        } else {
-          msg = json.message || (ok ? msg : "Submission failed. Please try again.");
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const json = await res.json();
+          if (!ok) {
+            if (json.code === "SUBMISSION_LIMIT_REACHED") {
+              console.warn("Submission limit reached", json.limit);
+            } else {
+              console.warn(json.error || json.message || "Submission failed");
+            }
+          }
         }
-      } catch (_) { }
-
-      // showToast(ok ? msg : msg, ok);
+      } catch (_) {}
 
       if (ok) form.reset();
 
