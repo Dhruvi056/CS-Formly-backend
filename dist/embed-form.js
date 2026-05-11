@@ -163,34 +163,10 @@
 
       // showToast(ok ? msg : msg, ok);
 
-      if (ok) {
-        form.reset();
-        // Hide form and show success message (Webflow style)
-        form.style.display = "none";
-        const successEl = form.parentElement.querySelector(".w-form-done");
-        if (successEl) {
-          successEl.style.display = "block";
-        }
-        // Ensure failure message is hidden
-        const failEl = form.parentElement.querySelector(".w-form-fail");
-        if (failEl) {
-          failEl.style.display = "none";
-        }
-      } else {
-        // Show failure message (Webflow style)
-        const failEl = form.parentElement.querySelector(".w-form-fail");
-        if (failEl) {
-          failEl.style.display = "block";
-        }
-      }
+      if (ok) form.reset();
 
     } catch (err) {
       console.error(" Form submission error:", err);
-      // Show failure message (Webflow style)
-      const failEl = form.parentElement.querySelector(".w-form-fail");
-      if (failEl) {
-        failEl.style.display = "block";
-      }
       // showToast("Network error: " + err.message, false);
     }
   }
