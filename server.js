@@ -237,6 +237,17 @@ const transporter = nodemailer.createTransport({
 });
 
 /* -------------------- FORM SUBMIT API -------------------- */
+function wantsJsonForFormSubmit(req) {
+  const accept = String(req.headers.accept || "").toLowerCase();
+  if (accept.includes("application/json")) return true;
+  if (String(req.get("X-Requested-With") || "").toLowerCase() === "xmlhttprequest") {
+    return true;
+  }
+  const mode = String(req.headers["sec-fetch-mode"] || "").toLowerCase();
+  if (mode === "cors" || mode === "same-origin") return true;
+  return false;
+}
+
 async function handleFormSubmit(req, res) {
   const { formId } = req.params;
   console.log("\n--- [DEBUG] Form Submission Received ---");
@@ -472,11 +483,13 @@ async function handleFormSubmit(req, res) {
       //   ? `Form submitted successfully. Thank you, ${fullName}!`
       //   : "Form submitted successfully",
     };
-    const acceptsHeader = req.headers.accept || "";
-    const wantsJson = acceptsHeader.includes("application/json");
+        const wantsJson = wantsJsonForFormSubmit(req);
+
+    // const acceptsHeader = req.headers.accept || "";
+    // const wantsJson = acceptsHeader.includes("application/json");
 
     if (wantsJson) return res.json(successPayload);
-    return res.status(204).end();
+    return res.status(204)  .end();
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

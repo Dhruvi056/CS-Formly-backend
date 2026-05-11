@@ -56,8 +56,28 @@
     });
   }
 
+   function isWebflowNativeForm(form) {
+    if (!form || form.nodeType !== 1) return false;
+    if (form.closest(".w-form")) return true;
+    const id = String(form.id || "");
+    if (/^wf-form-/i.test(id)) return true;
+    const name = String(form.getAttribute("name") || "");
+    if (/^wf-form-/i.test(name)) return true;
+    if (form.hasAttribute("data-wf-element-id")) return true;
+    return false;
+  }
+
+  function shouldInterceptFormSubmit(form) {
+    if (form.getAttribute("data-cs-formly-ajax") === "true") return true;
+    if (form.getAttribute("data-cs-formly-native") === "true") return false;
+    if (isWebflowNativeForm(form)) return false;
+    return true;
+  }
+
    async function handleSubmit(e) {
     const form = e.target;
+        if (!shouldInterceptFormSubmit(form)) return;
+
 
     // Support both data-form-id and action=".../api/forms/<id>"
     let formId = form.getAttribute("data-form-id");
@@ -175,6 +195,7 @@
 
   function attachToForm(form) {
     if (FORMS_ATTACHED.has(form)) return;
+    if (!shouldInterceptFormSubmit(form)) return;
 
     // Accept forms with data-form-id OR action pointing to our /api/forms/ endpoint
     const formId = form.getAttribute("data-form-id");
