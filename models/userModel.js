@@ -31,6 +31,9 @@ const userSchema = new mongoose.Schema(
     about: { type: String, default: "" },
     resetPasswordTokenHash: { type: String, default: "" },
     resetPasswordExpiresAt: { type: Date, default: null },
+    emailVerificationTokenHash: { type: String, default: "" },
+    emailVerificationExpiresAt: { type: Date, default: null },
+    isEmailVerified: { type: Boolean, default: false },
     subscriptionPlan: {
       type: String,
       enum: ["free", "pro", "business"],

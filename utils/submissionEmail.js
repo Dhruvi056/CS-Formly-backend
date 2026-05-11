@@ -572,8 +572,6 @@ async function sendAutoresponderEmail({
   }
 
   const senderName = fromName || "CS Formly";
-
-  // For autoresponder, do NOT include submitter-uploaded form files.
   // Only configured autoresponder attachments (id-based/default) and CID embeds should be attached.
   const finalAttachments = [];
   const normalizedRules = normalizeAttachmentRules(attachmentRules);

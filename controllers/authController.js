@@ -1,8 +1,232 @@
 const User = require("../models/userModel");
 const generateToken = require("../utils/generateToken");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
+
+function normalizeBaseUrl(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isLocalhostLike(value = "") {
+  try {
+    const u = new URL(String(value));
+    return /^(localhost|127\.0\.0\.1)$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getFrontendBaseUrl(req) {
+  const envUrl = normalizeBaseUrl(
+    process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL || process.env.CLIENT_URL
+  );
+  
+  // Detection from headers (useful in production)
+  const origin = normalizeBaseUrl(req.headers?.origin || "");
+  const referer = normalizeBaseUrl(req.headers?.referer || "");
+  const refererOrigin = (() => {
+    if (!referer) return "";
+    try {
+      return normalizeBaseUrl(new URL(referer).origin);
+    } catch {
+      return "";
+    }
+  })();
+
+  // Robust host detection handling proxies
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const forwardedProto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = forwardedHost || req.get("host") || "";
+  const requestBase = host ? normalizeBaseUrl(`${forwardedProto}://${host}`) : "";
+
+  // Prioritize non-localhost origin/referer/requestHost
+  if (origin && !isLocalhostLike(origin)) return origin;
+  if (refererOrigin && !isLocalhostLike(refererOrigin)) return refererOrigin;
+  if (requestBase && !isLocalhostLike(requestBase)) return requestBase;
+
+  // Fallback to env variable, then finally localhost
+  return (envUrl && !isLocalhostLike(envUrl)) ? envUrl : (envUrl || "http://localhost:3001");
+}
+
+function buildVerificationEmailHtml(link) {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f8; margin: 0; padding: 20px 0; color: #111827; }
+    .container { max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 34px 24px 28px; text-align: center; color: white; }
+    .logo { font-size: 32px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 8px; color: #ffffff; }
+    .logo span { color: rgba(255,255,255,0.78); font-weight: 500; }
+    .title { font-size: 12px; font-weight: 600; letter-spacing: 2.5px; opacity: 0.95; text-transform: uppercase; }
+    .content { padding: 24px; }
+    .card { border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+    .card-inner { padding: 14px 16px; }
+    .card-title { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #111827; }
+    .body-text { color: #374151; font-size: 15px; line-height: 1.6; margin-bottom: 20px; }
+    .btn-container { text-align: center; padding: 10px 0 20px; }
+    .btn { display: inline-block; padding: 12px 24px; background-color: #5b63f6; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .link-text { color: #6b7280; font-size: 12px; word-break: break-all; margin-top: 20px; text-align: center; }
+    .link-text a { color: #5b63f6; text-decoration: none; }
+    .footer { background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; }
+    .note { color: #9ca3af; font-size: 12px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+      <div class="title">Verify Account</div>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div class="card-inner">
+          <h2 class="card-title">Welcome to CS Formly!</h2>
+          <p class="body-text">We're excited to have you onboard. Please verify your email address to activate your account and start managing your forms.</p>
+          
+          <div class="btn-container">
+            <a href="${link}" class="btn">Verify Email Address</a>
+          </div>
+
+          <p class="body-text" style="font-size: 13px; color: #6b7280; margin-bottom: 0;">
+            If the button above doesn't work, copy and paste the following link into your browser:
+          </p>
+          <div class="link-text">
+            <a href="${link}">${link}</a>
+          </div>
+          
+          <p class="note">This verification link will expire in 24 hours.</p>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      This email was sent via <strong>CS Formly</strong> - the all-in-one headless form solution.
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+async function sendVerificationEmail({ to, link }) {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn("EMAIL_USER/EMAIL_PASS not configured.");
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  const htmlTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+</head>
+<body style="margin:0; padding:0; background:#f3f4f8; font-family:Arial,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8; padding:40px 0;">
+    <tr>
+      <td align="center">
+
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:16px; overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td align="center"
+              style="background:linear-gradient(135deg,#6571ff 0%,#060c17 100%);
+              padding:35px 20px; color:white;">
+
+              <div style="font-size:32px; font-weight:800;">
+                CS <span style="font-weight:400; opacity:.8;">Formly</span>
+              </div>
+
+              <div style="margin-top:8px; font-size:12px; letter-spacing:2px;">
+                VERIFY ACCOUNT
+              </div>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding:40px 35px; color:#374151;">
+
+              <h2 style="margin-top:0; color:#111827;">
+                Welcome to CS Formly!
+              </h2>
+
+              <p style="font-size:15px; line-height:1.7;">
+                Please verify your email address by clicking the button below.
+              </p>
+
+              <div style="text-align:center; margin:35px 0;">
+                <a href="${link}"
+                  style="
+                    background:#5b63f6;
+                    color:#ffffff;
+                    text-decoration:none;
+                    padding:14px 28px;
+                    border-radius:8px;
+                    display:inline-block;
+                    font-weight:600;
+                    font-size:15px;
+                  ">
+                  Verify Email
+                </a>
+              </div>
+
+              <p style="font-size:13px; color:#6b7280;">
+                If button doesn't work, use this link:
+              </p>
+
+              <p style="word-break:break-all;">
+                <a href="${link}" style="color:#5b63f6;">
+                  ${link}
+                </a>
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center"
+              style="background:#f8fafc;
+              padding:18px;
+              font-size:12px;
+              color:#94a3b8;">
+
+              This email was sent via
+              <strong>CS Formly</strong>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+`;
+
+  await transporter.sendMail({
+    from: `"CS Formly" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "Verify your CS Formly account",
+    html: htmlTemplate,
+  });
+}
 
 const registerUser = async (req, res) => {
   try {
@@ -31,13 +255,29 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    const rawVerificationToken = crypto.randomBytes(32).toString("hex");
+    const verificationTokenHash = crypto
+      .createHash("sha256")
+      .update(rawVerificationToken)
+      .digest("hex");
+
     const user = await User.create({
       firstName,
       lastName,
       email: email.toLowerCase(),
       password,
       role: role || "vendor_admin",
+      isEmailVerified: false,
+      emailVerificationTokenHash: verificationTokenHash,
+      emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
+
+    const verifyLink = `${getFrontendBaseUrl(req)}/verify-email?token=${rawVerificationToken}`;
+    try {
+      await sendVerificationEmail({ to: user.email, link: verifyLink });
+    } catch (mailErr) {
+      console.error("Failed to send verification email:", mailErr.message);
+    }
 
     return res.status(201).json({
       id: user._id,
@@ -54,7 +294,8 @@ const registerUser = async (req, res) => {
       about: user.about || "",
       subscriptionPlan: user.subscriptionPlan || "free",
       createdAt: user.createdAt,
-      token: generateToken(user._id),
+      isEmailVerified: user.isEmailVerified,
+      message: "Signup successful. Please verify your email before logging in.",
     });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -78,6 +319,13 @@ const loginUser = async (req, res) => {
     );
 
     if (user && (await user.matchPassword(password))) {
+      if (!user.isEmailVerified) {
+        return res.status(403).json({
+          message: "Please verify your email before logging in.",
+          code: "EMAIL_NOT_VERIFIED",
+        });
+      }
+
       return res.json({
         id: user._id,
         firstName: user.firstName,
@@ -92,6 +340,7 @@ const loginUser = async (req, res) => {
         website: user.website || "",
         about: user.about || "",
         subscriptionPlan: user.subscriptionPlan || "free",
+        isEmailVerified: user.isEmailVerified,
         createdAt: user.createdAt,
         token: generateToken(user._id),
       });
@@ -259,5 +508,33 @@ const updateMyProfile = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMyProfile, updateMyProfile ,changePassword,deleteAccount};
+const verifyEmail = async (req, res) => {
+  try {
+    const token = String(req.query.token || "").trim();
+    if (!token) {
+      return res.status(400).json({ message: "Verification token is required." });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await User.findOne({
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpiresAt: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired verification link." });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationTokenHash = "";
+    user.emailVerificationExpiresAt = null;
+    await user.save();
+
+    return res.json({ message: "Email verified successfully. You can now log in." });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, getMyProfile, updateMyProfile, changePassword, deleteAccount, verifyEmail };
 
