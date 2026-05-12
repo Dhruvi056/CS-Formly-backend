@@ -348,6 +348,8 @@ async function handleFormSubmit(req, res) {
         const url = uploaded.url;
         */
 
+        file.url = url; // Store for duplicate prevention in emails
+
         if (cleanData[fieldName] === undefined) {
           cleanData[fieldName] = url;
         } else if (Array.isArray(cleanData[fieldName])) {
@@ -382,8 +384,8 @@ async function handleFormSubmit(req, res) {
     );
     const dashboardBase = resolveDashboardBase(req);
     const dashboardPath = `/forms/${formId}`;
-    const loginPath = `/login?redirect=${encodeURIComponent(dashboardPath)}`;
-    const dashboardUrl = dashboardBase ? `${dashboardBase}${loginPath}` : loginPath;
+    // Link directly to the form page. The frontend handles auth redirects if needed.
+    const dashboardUrl = dashboardBase ? `${dashboardBase}${dashboardPath}` : dashboardPath;
 
     try {
       // 1. Check if the user has a custom SMTP configuration
@@ -435,6 +437,7 @@ async function handleFormSubmit(req, res) {
         filename: f.originalname,
         content: f.buffer,
         contentType: f.mimetype,
+        url: f.url, // Pass URL to skip duplicates in collectUrlBackedAttachments
       }));
 
       await sendSubmissionNotificationEmails({

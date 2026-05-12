@@ -156,9 +156,14 @@ function fileNameFromUrl(url, fallback = "attachment") {
   }
 }
 
-function collectUrlBackedAttachments(cleanData) {
+function collectUrlBackedAttachments(cleanData, alreadyAttached = []) {
   const out = [];
   const seen = new Set();
+
+  // Seed seen with any URLs already present in direct attachments
+  for (const att of alreadyAttached) {
+    if (att.url) seen.add(String(att.url).trim());
+  }
 
   for (const [key, value] of Object.entries(cleanData || {})) {
     const values = Array.isArray(value) ? value : [value];
@@ -197,10 +202,13 @@ function collectUrlBackedAttachments(cleanData) {
 
 function parseNotificationEmails(raw) {
   if (!raw || typeof raw !== "string") return [];
-  return raw
+  const parsed = raw
     .split(/[,;\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+
+  // Deduplicate emails
+  return [...new Set(parsed)];
 }
 
 function processCidImages(html, attachments) {
@@ -425,7 +433,7 @@ async function sendSubmissionNotificationEmails({
   }
 
   // Process CID images for local testing
-  const urlBackedAttachments = collectUrlBackedAttachments(normalizedData);
+  const urlBackedAttachments = collectUrlBackedAttachments(normalizedData, attachments);
   const finalAttachments = [...attachments, ...urlBackedAttachments];
   html = processCidImages(html, finalAttachments);
 
@@ -437,10 +445,10 @@ async function sendSubmissionNotificationEmails({
   // Log for debugging
   console.log(`Sending submission email to: ${recipients.join(", ")} from: ${fromUser} (${senderName})`);
 
-  for (const to of recipients) {
+  if (recipients.length > 0) {
     await transporter.sendMail({
       from: `"${senderName}" <${fromUser}>`,
-      to,
+      to: recipients.join(", "),
       subject,
       attachments: finalAttachments,
       html,
