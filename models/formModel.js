@@ -46,6 +46,8 @@ const formSchema = mongoose.Schema(
             key: { type: String, default: "" },
             attachmentUrl: { type: String, default: "" },
             attachmentName: { type: String, default: "" },
+            subject: { type: String, default: "" },
+            body: { type: String, default: "" },
           },
         ],
         default: [],

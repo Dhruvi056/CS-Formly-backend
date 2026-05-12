@@ -534,11 +534,8 @@ async function sendAutoresponderEmail({
 
   const normalizedRules = normalizeAttachmentRules(attachmentRules);
   const submissionRuleKey = getRuleKeyFromSubmission(cleanData);
-  const allowedRuleOrigin = "https://concatstring-new.webflow.io";
-  const requestOrigin = normalizeOriginFromMetadata(metadata);
-  const canUseIdBasedRules = requestOrigin === allowedRuleOrigin;
   let selectedRule = null;
-  if (canUseIdBasedRules && submissionRuleKey && normalizedRules.length) {
+  if (submissionRuleKey && normalizedRules.length) {
     selectedRule =
       normalizedRules.find(
         (rule) => rule.key.toLowerCase() === submissionRuleKey.toLowerCase()
