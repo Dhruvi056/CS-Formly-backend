@@ -96,23 +96,54 @@ const deleteSubmission = async (req, res) => {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    if (!submission.isDeleted) {
-      submission.isDeleted = true;
-      submission.deletedAt = new Date();
-      await submission.save();
+    submission.isDeleted = true;
+    submission.deletedAt = new Date();
+    await submission.save();
 
-      // Decrement storage usage if it had files
-      if (submission.fileSize && submission.fileSize > 0) {
-        const formRow = await Form.findById(submission.form).select("user").lean();
-        if (formRow && formRow.user) {
-          await User.findByIdAndUpdate(formRow.user, {
-            $inc: { storageUsedBytes: -submission.fileSize }
-          });
-        }
+    // Decrement storage usage if it had files
+    if (submission.fileSize && submission.fileSize > 0) {
+      const formRow = await Form.findById(submission.form).select("user").lean();
+      if (formRow && formRow.user) {
+        await User.findByIdAndUpdate(formRow.user, {
+          $inc: { storageUsedBytes: -submission.fileSize },
+        });
       }
     }
 
     return res.json({ message: "Submission removed" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const bulkDeleteSubmissions = async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "No submission IDs provided" });
+    }
+
+    // Process each ID
+    for (const id of ids) {
+      const submission = await Submission.findById(id);
+      if (submission && !submission.isDeleted) {
+        submission.isDeleted = true;
+        submission.deletedAt = new Date();
+        await submission.save();
+
+        // Decrement storage usage if it had files
+        if (submission.fileSize && submission.fileSize > 0) {
+          const formRow = await Form.findById(submission.form).select("user").lean();
+          if (formRow && formRow.user) {
+            await User.findByIdAndUpdate(formRow.user, {
+              $inc: { storageUsedBytes: -submission.fileSize }
+            });
+          }
+        }
+      }
+    }
+
+    return res.json({ message: `${ids.length} submissions removed` });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -187,6 +218,7 @@ const getLatestSubmissionByForms = async (req, res) => {
 module.exports = {
   getSubmissions,
   deleteSubmission,
+  bulkDeleteSubmissions,
   resolveSubmissionFile,
   getLatestSubmissionByForms,
 };

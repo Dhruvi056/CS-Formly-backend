@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getSubmissions,
   deleteSubmission,
+  bulkDeleteSubmissions,
   resolveSubmissionFile,
   getLatestSubmissionByForms,
 } = require("../controllers/submissionController");
@@ -10,6 +11,9 @@ const { protect } = require("../middlewares/authMiddleware");
 
 // Latest submission timestamps by form (for notifications)
 router.post("/latest", protect, getLatestSubmissionByForms);
+
+// Bulk delete submissions
+router.post("/bulk-delete", protect, bulkDeleteSubmissions);
 
 // Resolve legacy filename-only submission file to a real URL
 router.post("/resolve-file", protect, resolveSubmissionFile);

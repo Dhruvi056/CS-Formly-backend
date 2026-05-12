@@ -492,8 +492,10 @@ function normalizeAttachmentRules(rules) {
       key: String(r?.key || "").trim(),
       attachmentUrl: String(r?.attachmentUrl || "").trim(),
       attachmentName: String(r?.attachmentName || "").trim(),
+      subject: String(r?.subject || "").trim(),
+      body: String(r?.body || "").trim(),
     }))
-    .filter((r) => r.key && r.attachmentUrl);
+    .filter((r) => r.key && (r.attachmentUrl || r.subject || r.body));
 }
 
 function normalizeOriginFromMetadata(metadata = {}) {
@@ -530,8 +532,21 @@ async function sendAutoresponderEmail({
     return;
   }
 
-  let html = autoresponderBody || "Thank you for your submission!";
-  let subject = autoresponderSubject || `Thank you for your submission - ${formName || formId}`;
+  const normalizedRules = normalizeAttachmentRules(attachmentRules);
+  const submissionRuleKey = getRuleKeyFromSubmission(cleanData);
+  const allowedRuleOrigin = "https://concatstring-new.webflow.io";
+  const requestOrigin = normalizeOriginFromMetadata(metadata);
+  const canUseIdBasedRules = requestOrigin === allowedRuleOrigin;
+  let selectedRule = null;
+  if (canUseIdBasedRules && submissionRuleKey && normalizedRules.length) {
+    selectedRule =
+      normalizedRules.find(
+        (rule) => rule.key.toLowerCase() === submissionRuleKey.toLowerCase()
+      ) || null;
+  }
+
+  let html = selectedRule?.body || autoresponderBody || "Thank you for your submission!";
+  let subject = selectedRule?.subject || autoresponderSubject || `Thank you for your submission - ${formName || formId}`;
 
   // Support an {{AllFields}} macro
   if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
@@ -582,18 +597,7 @@ async function sendAutoresponderEmail({
   const senderName = fromName || "CS Formly";
   // Only configured autoresponder attachments (id-based/default) and CID embeds should be attached.
   const finalAttachments = [];
-  const normalizedRules = normalizeAttachmentRules(attachmentRules);
-  const submissionRuleKey = getRuleKeyFromSubmission(cleanData);
-  const allowedRuleOrigin = "https://concatstring-new.webflow.io";
-  const requestOrigin = normalizeOriginFromMetadata(metadata);
-  const canUseIdBasedRules = requestOrigin === allowedRuleOrigin;
-  let selectedRule = null;
-  if (canUseIdBasedRules && submissionRuleKey && normalizedRules.length) {
-    selectedRule =
-      normalizedRules.find(
-        (rule) => rule.key.toLowerCase() === submissionRuleKey.toLowerCase()
-      ) || null;
-  }
+  // (selectedRule already found above)
 
   // Add static attachment if provided
   const effectiveAttachmentUrl = selectedRule?.attachmentUrl || staticAttachmentUrl;
