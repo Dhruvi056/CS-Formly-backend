@@ -379,81 +379,85 @@ async function handleFormSubmit(req, res) {
       });
     }
 
-    const recipients = parseNotificationEmails(
-      mongoForm.settings?.notificationEmail
-    );
-    const dashboardBase = resolveDashboardBase(req);
-    const dashboardPath = `/forms/${formId}`;
-    // Link directly to the form page. The frontend handles auth redirects if needed.
-    const dashboardUrl = dashboardBase ? `${dashboardBase}${dashboardPath}` : dashboardPath;
+      const recipients = parseNotificationEmails(
+        mongoForm.settings?.notificationEmail
+      );
+      const ccRecipients = parseNotificationEmails(
+        mongoForm.settings?.ccNotificationEmail
+      );
+      const dashboardBase = resolveDashboardBase(req);
+      const dashboardPath = `/forms/${formId}`;
+      // Link directly to the form page. The frontend handles auth redirects if needed.
+      const dashboardUrl = dashboardBase ? `${dashboardBase}${dashboardPath}` : dashboardPath;
 
-    try {
-      // 1. Check if the user has a custom SMTP configuration
-      const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user, isDefault: true }).lean();
+      try {
+        // 1. Check if the user has a custom SMTP configuration
+        const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user, isDefault: true }).lean();
 
-      let finalTransporter = transporter;
-      let finalFromUser = process.env.EMAIL_USER;
-      let finalFromName = "CS Formly";
+        let finalTransporter = transporter;
+        let finalFromUser = process.env.EMAIL_USER;
+        let finalFromName = "CS Formly";
 
-      if (customSmtp) {
-        console.log(`Using custom SMTP for user ${mongoForm.user}: ${customSmtp.host}`);
-        try {
-          finalTransporter = nodemailer.createTransport({
-            host: customSmtp.host,
-            port: customSmtp.port,
-            secure: customSmtp.encryption === "SSL" || customSmtp.port === 465,
-            auth: {
-              user: customSmtp.username,
-              pass: customSmtp.password,
-            },
-            tls: {
-              rejectUnauthorized: false,
-            },
-          });
-          finalFromUser = customSmtp.fromEmail;
-          finalFromName = customSmtp.fromName;
-        } catch (e) {
-          console.error("Failed to create custom transporter, falling back to default:", e);
+        if (customSmtp) {
+          console.log(`Using custom SMTP for user ${mongoForm.user}: ${customSmtp.host}`);
+          try {
+            finalTransporter = nodemailer.createTransport({
+              host: customSmtp.host,
+              port: customSmtp.port,
+              secure: customSmtp.encryption === "SSL" || customSmtp.port === 465,
+              auth: {
+                user: customSmtp.username,
+                pass: customSmtp.password,
+              },
+              tls: {
+                rejectUnauthorized: false,
+              },
+            });
+            finalFromUser = customSmtp.fromEmail;
+            finalFromName = customSmtp.fromName;
+          } catch (e) {
+            console.error("Failed to create custom transporter, falling back to default:", e);
+          }
+        } else {
+          console.log(`Using default system SMTP for user ${mongoForm.user}`);
         }
-      } else {
-        console.log(`Using default system SMTP for user ${mongoForm.user}`);
-      }
 
-      const metadata = {
-        submittedAt: new Date().toLocaleString("en-US", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        }),
-        ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress,
-        requestOrigin: req.headers.origin || "",
-        requestReferer: req.headers.referer || "",
-      };
+        const metadata = {
+          submittedAt: new Date().toLocaleString("en-US", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }),
+          ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress,
+          requestOrigin: req.headers.origin || "",
+          requestReferer: req.headers.referer || "",
+        };
 
-      const emailAttachments = allFiles.map((f) => ({
-        filename: f.originalname,
-        content: f.buffer,
-        contentType: f.mimetype,
-        url: f.url, // Pass URL to skip duplicates in collectUrlBackedAttachments
-      }));
+        const emailAttachments = allFiles.map((f) => ({
+          filename: f.originalname,
+          content: f.buffer,
+          contentType: f.mimetype,
+          url: f.url, // Pass URL to skip duplicates in collectUrlBackedAttachments
+        }));
 
-      await sendSubmissionNotificationEmails({
-        transporter: finalTransporter,
-        fromUser: finalFromUser,
-        fromName: finalFromName, // Added this parameter support
-        formName: mongoForm.name,
-        formId,
-        dashboardUrl,
-        cleanData,
-        recipients,
-        metadata,
-        customTemplateEnabled: mongoForm.settings?.customTemplateEnabled,
-        customTemplateBody: mongoForm.settings?.customTemplateBody,
-        attachments: emailAttachments,
-      });
+        await sendSubmissionNotificationEmails({
+          transporter: finalTransporter,
+          fromUser: finalFromUser,
+          fromName: finalFromName, // Added this parameter support
+          formName: mongoForm.name,
+          formId,
+          dashboardUrl,
+          cleanData,
+          recipients,
+          ccRecipients,
+          metadata,
+          customTemplateEnabled: mongoForm.settings?.customTemplateEnabled,
+          customTemplateBody: mongoForm.settings?.customTemplateBody,
+          attachments: emailAttachments,
+        });
 
       // 2. Handle Autoresponder
       if (mongoForm.settings?.autoresponderEnabled) {

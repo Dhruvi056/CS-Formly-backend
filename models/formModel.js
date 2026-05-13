@@ -23,6 +23,7 @@ const formSchema = mongoose.Schema(
     },
     settings: {
       notificationEmail: String,
+      ccNotificationEmail: String,
       successMessage: {
         type: String,
         default: "",

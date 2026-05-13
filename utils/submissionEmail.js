@@ -363,28 +363,34 @@ async function sendSubmissionNotificationEmails({
   formId,
   dashboardUrl,
   cleanData,
-  recipients,
+  recipients = [],
   metadata = {},
   customTemplateEnabled,
   customTemplateBody,
   attachments = [],
+  ccRecipients = [],
 }) {
-  if (!recipients.length) {
-    console.warn(`No recipients defined for form ${formId}. Skipping email notification.`);
+  const normalizedData = normalizeCleanDataForEmail(cleanData);
+  const subject = `New Submission - ${formName || formId} | CS Formly`;
+  const senderName = fromName || "CS Formly";
+
+  if (recipients.length === 0 && ccRecipients.length === 0) {
+    console.warn(`No notification recipients defined for form ${formId}. Skipping email notification.`);
     return;
   }
+
   if (!fromUser) {
     console.warn(`No sender email defined for form ${formId}. Skipping email notification.`);
     return;
   }
 
-  const normalizedData = normalizeCleanDataForEmail(cleanData);
-  let html;
+  // Pre-build common parts to save time
+  let baseHtml;
   if (customTemplateEnabled && customTemplateBody) {
-    html = customTemplateBody;
+    baseHtml = customTemplateBody;
 
     // Support an {{AllFields}} macro that dynamically dumps all form fields
-    if (html.includes('{{AllFields}}') || html.includes('{AllFields}')) {
+    if (baseHtml.includes('{{AllFields}}') || baseHtml.includes('{AllFields}')) {
       const rowsHtml = Object.entries(normalizedData)
         .map(([key, value]) => {
           const displayValue = renderDisplayValue(value, {
@@ -399,18 +405,16 @@ async function sendSubmissionNotificationEmails({
         .join("");
 
       const allFieldsTable = `<table style="width: 100%; border-collapse: separate; border-spacing: 0 12px;">${rowsHtml}</table>`;
-      html = html.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
+      baseHtml = baseHtml.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
     }
 
     for (const key in normalizedData) {
       const val = normalizedData[key];
       const safeVal = escapeHtml(valueToText(val));
-      // support both {{key}} and {key}
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
-      html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
+      baseHtml = baseHtml.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
+      baseHtml = baseHtml.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
     }
 
-    // Support built-in meta variables
     const metaVars = {
       FormName: formName || formId,
       DashboardUrl: dashboardUrl,
@@ -419,11 +423,11 @@ async function sendSubmissionNotificationEmails({
     };
 
     for (const key in metaVars) {
-      html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), metaVars[key]);
-      html = html.replace(new RegExp(`\\{${key}\\}`, 'gi'), metaVars[key]);
+      baseHtml = baseHtml.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), metaVars[key]);
+      baseHtml = baseHtml.replace(new RegExp(`\\{${key}\\}`, 'gi'), metaVars[key]);
     }
   } else {
-    html = buildSubmissionEmailHtml({
+    baseHtml = buildSubmissionEmailHtml({
       formName,
       formId,
       dashboardUrl,
@@ -432,27 +436,30 @@ async function sendSubmissionNotificationEmails({
     });
   }
 
-  // Process CID images for local testing
+  // Process CID images
   const urlBackedAttachments = collectUrlBackedAttachments(normalizedData, attachments);
   const finalAttachments = [...attachments, ...urlBackedAttachments];
-  html = processCidImages(html, finalAttachments);
+  const finalHtml = processCidImages(baseHtml, finalAttachments);
 
-  const subject = `New Submission - ${formName || formId} | CS Formly`;
+  console.log(`[DEBUG] sendSubmissionNotificationEmails - recipients:`, recipients);
+  console.log(`[DEBUG] sendSubmissionNotificationEmails - ccRecipients:`, ccRecipients);
 
-  // ... (production code omitted for brevity in this view, but keeping logic)
-  const senderName = fromName || "CS Formly";
+  const to = recipients;
+  const cc = ccRecipients;
 
-  // Log for debugging
-  console.log(`Sending submission email to: ${recipients.join(", ")} from: ${fromUser} (${senderName})`);
+  console.log(`Sending submission email: [To: ${to.join(", ")}] [Cc: ${cc.join(", ")}] from: ${fromUser} (${senderName})`);
 
-  if (recipients.length > 0) {
+  try {
     await transporter.sendMail({
       from: `"${senderName}" <${fromUser}>`,
-      to: recipients.join(", "),
+      to,
+      cc,
       subject,
       attachments: finalAttachments,
-      html,
+      html: finalHtml,
     });
+  } catch (err) {
+    console.error(`Error sending email to [${to.join(", ")}]:`, err);
   }
 }
 

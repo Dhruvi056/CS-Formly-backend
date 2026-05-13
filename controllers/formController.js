@@ -150,10 +150,13 @@ const updateForm = async (req, res) => {
           });
         }
       }
-      const currentSettings = form.settings && typeof form.settings.toObject === "function"
-        ? form.settings.toObject()
-        : form.settings || {};
-      form.settings = { ...currentSettings, ...settings };
+
+      // Explicitly update each field in settings to ensure Mongoose tracks changes correctly
+      const currentSettings = form.settings || {};
+      const newSettings = { ...currentSettings.toObject?.() || currentSettings, ...settings };
+      
+      // Use form.set to ensure Mongoose detects the nested object change
+      form.set('settings', newSettings);
     }
 
     const updatedForm = await form.save();
