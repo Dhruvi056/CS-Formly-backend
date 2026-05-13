@@ -93,6 +93,53 @@ const getSmtpConfigs = async (req, res) => {
   }
 };
 
+// @desc    Update SMTP configuration
+// @route   PUT /api/smtp/:id
+// @access  Private
+const updateSmtpConfig = async (req, res) => {
+  const { host, port, encryption, username, password, fromName, fromEmail, isDefault } = req.body;
+
+  try {
+    const config = await SmtpConfig.findById(req.params.id);
+
+    if (!config) {
+      return res.status(404).json({ message: "Configuration not found" });
+    }
+
+    if (config.user.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    // Plan Check: SMTP is for Pro and Business only
+    if (req.user.role !== "super_admin" && !planAllowsProOnlySettings(req.user.subscriptionPlan)) {
+      return res.status(403).json({
+        message: "Custom SMTP white-labeling is a Pro/Business feature. Please upgrade your plan.",
+        code: "PRO_FEATURE_REQUIRED",
+      });
+    }
+
+    // If setting as default, unset others for this user
+    if (isDefault) {
+      await SmtpConfig.updateMany({ user: req.user._id }, { isDefault: false });
+    }
+
+    config.host = host ? host.trim() : config.host;
+    config.port = port ? Number(port) : config.port;
+    config.encryption = encryption || config.encryption;
+    config.username = username ? username.trim() : config.username;
+    if (password) config.password = password; // Only update password if provided
+    config.fromName = fromName ? fromName.trim() : config.fromName;
+    config.fromEmail = fromEmail ? fromEmail.trim() : config.fromEmail;
+    config.isDefault = isDefault !== undefined ? isDefault : config.isDefault;
+
+    const updatedConfig = await config.save();
+    return res.status(200).json(updatedConfig);
+  } catch (error) {
+    console.error("Update SMTP Error:", error);
+    return res.status(500).json({ message: "Failed to update SMTP configuration" });
+  }
+};
+
 // @desc    Delete SMTP configuration
 // @route   DELETE /api/smtp/:id
 // @access  Private
@@ -122,4 +169,5 @@ module.exports = {
   createSmtpConfig,
   getSmtpConfigs,
   deleteSmtpConfig,
+  updateSmtpConfig,
 };

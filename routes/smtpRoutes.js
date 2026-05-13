@@ -6,6 +6,7 @@ const {
   createSmtpConfig,
   getSmtpConfigs,
   deleteSmtpConfig,
+  updateSmtpConfig,
 } = require("../controllers/smtpController");
 
 // All SMTP routes should be protected (require a logged in user)
@@ -13,6 +14,6 @@ router.use(protect);
 
 router.post("/test", testSmtp);
 router.route("/").post(createSmtpConfig).get(getSmtpConfigs);
-router.route("/:id").delete(deleteSmtpConfig);
+router.route("/:id").delete(deleteSmtpConfig).put(updateSmtpConfig);
 
 module.exports = router;
