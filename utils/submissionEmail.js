@@ -441,9 +441,6 @@ async function sendSubmissionNotificationEmails({
   const finalAttachments = [...attachments, ...urlBackedAttachments];
   const finalHtml = processCidImages(baseHtml, finalAttachments);
 
-  console.log(`[DEBUG] sendSubmissionNotificationEmails - recipients:`, recipients);
-  console.log(`[DEBUG] sendSubmissionNotificationEmails - ccRecipients:`, ccRecipients);
-
   const to = recipients;
   const cc = ccRecipients;
 
@@ -482,7 +479,12 @@ function findSubmitterEmail(cleanData) {
 
 function getRuleKeyFromSubmission(cleanData) {
   if (!cleanData || typeof cleanData !== "object") return "";
-  const candidates = ["id", "Id", "ID", "planId", "PlanId", "packageId", "PackageId"];
+  const candidates = [
+    "id", "Id", "ID",
+    "jobid", "jobId", "JobID",
+    "planId", "PlanId",
+    "packageId", "PackageId"
+  ];
   for (const key of candidates) {
     const value = cleanData[key];
     if (value === undefined || value === null) continue;
@@ -490,6 +492,17 @@ function getRuleKeyFromSubmission(cleanData) {
     if (normalized) return normalized;
   }
   return "";
+}
+
+function isEffectivelyEmpty(s) {
+  if (!s || typeof s !== "string") return true;
+  const trimmed = s.trim();
+  if (!trimmed) return true;
+  // If it has an image or an iframe, it's not empty
+  if (/<img|<iframe/i.test(trimmed)) return false;
+  // Strip all other HTML tags and check if text remains
+  const stripped = trimmed.replace(/<[^>]*>/g, "").trim();
+  return stripped.length === 0;
 }
 
 function normalizeAttachmentRules(rules) {
@@ -549,8 +562,15 @@ async function sendAutoresponderEmail({
       ) || null;
   }
 
-  let html = selectedRule?.body || autoresponderBody || "Thank you for your submission!";
-  let subject = selectedRule?.subject || autoresponderSubject || `Thank you for your submission - ${formName || formId}`;
+  let html = selectedRule?.body;
+  if (isEffectivelyEmpty(html)) {
+    html = autoresponderBody || "Thank you for your submission!";
+  }
+
+  let subject = selectedRule?.subject;
+  if (isEffectivelyEmpty(subject)) {
+    subject = autoresponderSubject || `Thank you for your submission - ${formName || formId}`;
+  }
 
   // Support an {{AllFields}} macro
   if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
@@ -577,8 +597,6 @@ async function sendAutoresponderEmail({
   for (const key in normalizedData) {
     const val = normalizedData[key];
     const safeVal = escapeHtml(valueToText(val));
-    const regex = new RegExp(`\\\\{\\\\{${key}\\\\}\\\\}`, "gi");
-    const regexSimple = new RegExp(`\\\\{${key}\\\\}`, "gi");
     html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
     html = html.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
     subject = subject.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), valueToText(val));
