@@ -1,0 +1,12 @@
+# Disable directory indexing
+Options -Indexes
+
+# Rewrite rules to proxy requests to the Node.js server running on port 3000
+RewriteEngine On
+
+# Ensure that the proxy handles the request
+# We use [P] flag for proxying
+# We use [L] to stop processing other rules
+
+# Proxy all requests to the local Node.js server
+RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
