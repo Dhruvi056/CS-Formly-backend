@@ -644,7 +644,10 @@ app.all("/api/*", (req, res) => {
 
 // Prevent SPA fallback for missing static assets (return 404 instead of index.html)
 app.get(["/static/*", "/assets/*"], (req, res) => {
-  console.warn(`[WARN] Static asset not found: ${req.path}`);
+  // Ignore source map warnings as they are optional and often missing in production
+  if (!req.path.endsWith(".map")) {
+    console.warn(`[WARN] Static asset not found: ${req.path}`);
+  }
   res.status(404).send("Asset not found");
 });
 
