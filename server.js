@@ -118,6 +118,11 @@ if (!fs.existsSync(path.join(DIST_DIR, "index.html"))) {
 }
 
 console.log(`[INFO] Serving frontend from: ${FRONTEND_DIR}`);
+if (fs.existsSync(path.join(FRONTEND_DIR, "index.html"))) {
+  console.log(`[INFO] Found index.html at: ${path.join(FRONTEND_DIR, "index.html")}`);
+} else {
+  console.error(`[ERROR] index.html NOT found in: ${FRONTEND_DIR}`);
+}
 
 const INDEX_HTML = path.join(FRONTEND_DIR, "index.html");
 
@@ -174,6 +179,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/submissions", submissionRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/smtp", smtpRoutes);
+
+/* -------------------- Upload (DigitalOcean Spaces) -------------------- */
 
 /* -------------------- Upload (DigitalOcean Spaces) -------------------- */
 function isTruthy(v) {
@@ -633,6 +640,12 @@ app.post("/api/auth/reset-password/confirm", async (req, res) => {
 // Catch all API requests that didn't match and return JSON 404
 app.all("/api/*", (req, res) => {
   return res.status(404).json({ error: "API route not found" });
+});
+
+// Prevent SPA fallback for missing static assets (return 404 instead of index.html)
+app.get(["/static/*", "/assets/*"], (req, res) => {
+  console.warn(`[WARN] Static asset not found: ${req.path}`);
+  res.status(404).send("Asset not found");
 });
 
 // SPA fallback route: return index.html for unknown non-API routes.
