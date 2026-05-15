@@ -33,7 +33,17 @@ function valueToText(value) {
   }
 }
 
-function renderDisplayValue(value, { linkClass = "", linkStyle = "" } = {}) {
+function renderDisplayValue(value, { key = "", linkClass = "", linkStyle = "" } = {}) {
+  const lowerKey = String(key || "").toLowerCase();
+  const isSocialOrWeb = lowerKey.includes("linkedin") || lowerKey.includes("github") || lowerKey.includes("website") || lowerKey.includes("portfolio") || lowerKey.includes("link");
+  const isResume = lowerKey.includes("resume") || lowerKey.includes("cv");
+
+  const getLabel = (url) => {
+    if (isSocialOrWeb) return url;
+    if (isResume) return "Download";
+    return "View Attachment";
+  };
+
   if (Array.isArray(value)) {
     return value
       .map((v) => {
@@ -43,7 +53,7 @@ function renderDisplayValue(value, { linkClass = "", linkStyle = "" } = {}) {
             : linkStyle
               ? ` style="${linkStyle}"`
               : "";
-          return `<a href="${escapeHtml(v)}"${attrs}>View Attachment</a>`;
+          return `<a href="${escapeHtml(v)}"${attrs}>${escapeHtml(getLabel(v))}</a>`;
         }
         return escapeHtml(valueToText(v));
       })
@@ -56,7 +66,7 @@ function renderDisplayValue(value, { linkClass = "", linkStyle = "" } = {}) {
       : linkStyle
         ? ` style="${linkStyle}"`
         : "";
-    return `<a href="${escapeHtml(value)}"${attrs}>View Attachment</a>`;
+    return `<a href="${escapeHtml(value)}"${attrs}>${escapeHtml(getLabel(value))}</a>`;
   }
 
   return escapeHtml(valueToText(value));
@@ -257,20 +267,10 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
   const normalizedData = normalizeCleanDataForEmail(cleanData);
   const rows = Object.entries(normalizedData)
     .map(([key, value]) => {
-      let displayValue;
-      if (Array.isArray(value)) {
-        displayValue = value
-          .map((v) =>
-            typeof v === "string" && v.startsWith("http")
-              ? `<a href="${escapeHtml(v)}" class="file-link">View Attachment</a>`
-              : escapeHtml(valueToText(v))
-          )
-          .join(", ");
-      } else if (typeof value === "string" && value.startsWith("http")) {
-        displayValue = `<a href="${escapeHtml(value)}" class="file-link">View Attachment</a>`;
-      } else {
-        displayValue = escapeHtml(valueToText(value));
-      }
+      const displayValue = renderDisplayValue(value, {
+        key,
+        linkClass: "file-link",
+      });
       return `
         <tr>
           <th>${escapeHtml(key)}</th>
@@ -394,6 +394,7 @@ async function sendSubmissionNotificationEmails({
       const rowsHtml = Object.entries(normalizedData)
         .map(([key, value]) => {
           const displayValue = renderDisplayValue(value, {
+            key,
             linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
           });
           return `
@@ -578,6 +579,7 @@ async function sendAutoresponderEmail({
     const rowsHtml = Object.entries(normalizedData)
       .map(([key, value]) => {
         const displayValue = renderDisplayValue(value, {
+          key,
           linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
         });
         return `
@@ -619,9 +621,8 @@ async function sendAutoresponderEmail({
   const senderName = fromName || "CS Formly";
   // Only configured autoresponder attachments (id-based/default) and CID embeds should be attached.
   const finalAttachments = [];
-  // (selectedRule already found above)
 
-  // Add static attachment if provided
+  // Add static attachment if provided (from rules or default settings)
   const effectiveAttachmentUrl = selectedRule?.attachmentUrl || staticAttachmentUrl;
   const effectiveAttachmentName = selectedRule?.attachmentName || staticAttachmentName;
   if (effectiveAttachmentUrl) {
@@ -633,16 +634,16 @@ async function sendAutoresponderEmail({
         path.join(__dirname, "..", "public", "uploads", fileName),
       ];
       const resolvedPath = candidates.find((p) => fs.existsSync(p));
+      const attachmentItem = {
+        filename: effectiveAttachmentName || fileName,
+        path: resolvedPath || (effectiveAttachmentUrl.startsWith("http") ? effectiveAttachmentUrl : null)
+      };
 
-      if (resolvedPath) {
-        const content = fs.readFileSync(resolvedPath);
-        finalAttachments.push({
-          filename: effectiveAttachmentName || fileName,
-          content: content
-        });
+      if (attachmentItem.path) {
+        finalAttachments.push(attachmentItem);
       } else {
         console.warn(
-          `Autoresponder attachment not found on disk for ${fileName}. Tried: ${candidates.join(", ")}`
+          `Autoresponder attachment not found for ${fileName}. URL: ${effectiveAttachmentUrl}`
         );
       }
     } catch (err) {
