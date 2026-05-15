@@ -44,14 +44,29 @@ function renderDisplayValue(value, { key = "", linkClass = "", linkStyle = "" } 
     return "View Attachment";
   };
 
+  const getStyle = (baseStyle) => {
+    let style = baseStyle || "";
+    if (isSocialOrWeb) {
+      if (style && !style.includes("font-weight")) {
+        style += " font-weight: 400;";
+      } else if (!style) {
+        style = "font-weight: 400;";
+      } else {
+        style = style.replace(/font-weight:\s*600/g, "font-weight: 400");
+      }
+    }
+    return style;
+  };
+
   if (Array.isArray(value)) {
     return value
       .map((v) => {
         if (typeof v === "string" && v.startsWith("http")) {
+          const style = getStyle(linkStyle);
           const attrs = linkClass
-            ? ` class="${linkClass}"`
-            : linkStyle
-              ? ` style="${linkStyle}"`
+            ? ` class="${linkClass}"${style ? ` style="${style}"` : ""}`
+            : style
+              ? ` style="${style}"`
               : "";
           return `<a href="${escapeHtml(v)}"${attrs}>${escapeHtml(getLabel(v))}</a>`;
         }
@@ -61,10 +76,11 @@ function renderDisplayValue(value, { key = "", linkClass = "", linkStyle = "" } 
   }
 
   if (typeof value === "string" && value.startsWith("http")) {
+    const style = getStyle(linkStyle);
     const attrs = linkClass
-      ? ` class="${linkClass}"`
-      : linkStyle
-        ? ` style="${linkStyle}"`
+      ? ` class="${linkClass}"${style ? ` style="${style}"` : ""}`
+      : style
+        ? ` style="${style}"`
         : "";
     return `<a href="${escapeHtml(value)}"${attrs}>${escapeHtml(getLabel(value))}</a>`;
   }
