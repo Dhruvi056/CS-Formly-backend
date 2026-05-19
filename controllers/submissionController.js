@@ -89,11 +89,23 @@ const getSubmissions = async (req, res) => {
   }
 };
 
+async function userCanManageSubmission(req, submission) {
+  if (!submission) return false;
+  if (req.user.role === "super_admin") return true;
+  const formRow = await Form.findById(submission.form).select("user").lean();
+  if (!formRow?.user) return false;
+  return formRow.user.toString() === req.user._id.toString();
+}
+
 const deleteSubmission = async (req, res) => {
   try {
     const submission = await Submission.findById(req.params.id);
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
+    }
+
+    if (!(await userCanManageSubmission(req, submission))) {
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     submission.isDeleted = true;
@@ -123,27 +135,32 @@ const bulkDeleteSubmissions = async (req, res) => {
       return res.status(400).json({ message: "No submission IDs provided" });
     }
 
-    // Process each ID
+    let removedCount = 0;
+
     for (const id of ids) {
       const submission = await Submission.findById(id);
-      if (submission && !submission.isDeleted) {
-        submission.isDeleted = true;
-        submission.deletedAt = new Date();
-        await submission.save();
+      if (!submission || submission.isDeleted) continue;
 
-        // Decrement storage usage if it had files
-        if (submission.fileSize && submission.fileSize > 0) {
-          const formRow = await Form.findById(submission.form).select("user").lean();
-          if (formRow && formRow.user) {
-            await User.findByIdAndUpdate(formRow.user, {
-              $inc: { storageUsedBytes: -submission.fileSize }
-            });
-          }
+      if (!(await userCanManageSubmission(req, submission))) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+
+      submission.isDeleted = true;
+      submission.deletedAt = new Date();
+      await submission.save();
+      removedCount += 1;
+
+      if (submission.fileSize && submission.fileSize > 0) {
+        const formRow = await Form.findById(submission.form).select("user").lean();
+        if (formRow?.user) {
+          await User.findByIdAndUpdate(formRow.user, {
+            $inc: { storageUsedBytes: -submission.fileSize },
+          });
         }
       }
     }
 
-    return res.json({ message: `${ids.length} submissions removed` });
+    return res.json({ message: `${removedCount} submission(s) removed`, removedCount });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
