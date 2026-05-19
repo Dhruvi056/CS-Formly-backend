@@ -405,7 +405,7 @@ async function handleFormSubmit(req, res) {
 
         let finalTransporter = transporter;
         let finalFromUser = process.env.EMAIL_USER;
-        let finalFromName = "CS Formly";
+        let finalFromName = "Concatstring";
 
         if (customSmtp) {
           console.log(`Using custom SMTP for user ${mongoForm.user}: ${customSmtp.host}`);

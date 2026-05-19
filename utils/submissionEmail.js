@@ -2,6 +2,8 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 
+const EMAIL_BRAND_NAME = "Concatstring";
+
 function escapeHtml(s) {
   if (s == null) return "";
   return String(s)
@@ -331,7 +333,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+      <div class="logo">${escapeHtml(EMAIL_BRAND_NAME)}</div>
       <div class="title">New Submission</div>
     </div>
     <div class="content">
@@ -364,7 +366,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
       </div>
     </div>
     <div class="footer">
-      This notification was sent via <strong>CS Formly</strong>-the all-in-one headless form solution.
+      This notification was sent via <strong>${escapeHtml(EMAIL_BRAND_NAME)}</strong>.
     </div>
   </div>
 </body>
@@ -387,8 +389,8 @@ async function sendSubmissionNotificationEmails({
   ccRecipients = [],
 }) {
   const normalizedData = normalizeCleanDataForEmail(cleanData);
-  const subject = `New Submission - ${formName || formId} | CS Formly`;
-  const senderName = fromName || "CS Formly";
+  const subject = `New Submission - ${formName || formId} | ${EMAIL_BRAND_NAME}`;
+  const senderName = fromName || EMAIL_BRAND_NAME;
 
   if (recipients.length === 0 && ccRecipients.length === 0) {
     console.warn(`No notification recipients defined for form ${formId}. Skipping email notification.`);
@@ -634,7 +636,7 @@ async function sendAutoresponderEmail({
     subject = subject.replace(new RegExp(`\\{${key}\\}`, "gi"), metaVars[key]);
   }
 
-  const senderName = fromName || "CS Formly";
+  const senderName = fromName || EMAIL_BRAND_NAME;
   // Only configured autoresponder attachments (id-based/default) and CID embeds should be attached.
   const finalAttachments = [];
 
@@ -694,13 +696,13 @@ async function sendAutoresponderEmail({
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+      <div class="logo">${escapeHtml(EMAIL_BRAND_NAME)}</div>
     </div>
     <div class="content">
       ${processedHtml}
     </div>
     <div class="footer">
-      This email was sent via <strong>CS Formly</strong>.
+      This email was sent via <strong>${escapeHtml(EMAIL_BRAND_NAME)}</strong>.
     </div>
   </div>
 </body>
