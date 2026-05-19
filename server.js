@@ -399,7 +399,9 @@ async function handleFormSubmit(req, res) {
 
       try {
         // 1. Check if the user has a custom SMTP configuration
-        const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user, isDefault: true }).lean();
+        const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user })
+          .sort({ isDefault: -1, updatedAt: -1 })
+          .lean();
 
         let finalTransporter = transporter;
         let finalFromUser = process.env.EMAIL_USER;

@@ -56,9 +56,12 @@ const createSmtpConfig = async (req, res) => {
   }
 
   try {
-    // If setting as default, unset others for this user
-    if (isDefault) {
-      await SmtpConfig.updateMany({ user: req.user._id }, { isDefault: false });
+    const existingCount = await SmtpConfig.countDocuments({ user: req.user._id });
+    if (existingCount > 0) {
+      return res.status(400).json({
+        message: "Only one SMTP configuration is allowed. Edit your existing server instead.",
+        code: "SMTP_LIMIT_REACHED",
+      });
     }
 
     const newConfig = await SmtpConfig.create({
@@ -70,7 +73,7 @@ const createSmtpConfig = async (req, res) => {
       password, // Note: storing plain text. Recommend adding encryption layer here later
       fromName: fromName.trim(),
       fromEmail: fromEmail.trim(),
-      isDefault: isDefault || false,
+      isDefault: true,
     });
 
     return res.status(201).json(newConfig);
@@ -85,7 +88,10 @@ const createSmtpConfig = async (req, res) => {
 // @access  Private
 const getSmtpConfigs = async (req, res) => {
   try {
-    const configs = await SmtpConfig.find({ user: req.user._id }).select("-password"); // Do not return passwords
+    const configs = await SmtpConfig.find({ user: req.user._id })
+      .select("-password")
+      .sort({ isDefault: -1, updatedAt: -1 })
+      .limit(1);
     return res.status(200).json(configs);
   } catch (error) {
     console.error("Get SMTP Error:", error);
@@ -118,11 +124,6 @@ const updateSmtpConfig = async (req, res) => {
       });
     }
 
-    // If setting as default, unset others for this user
-    if (isDefault) {
-      await SmtpConfig.updateMany({ user: req.user._id }, { isDefault: false });
-    }
-
     config.host = host ? host.trim() : config.host;
     config.port = port ? Number(port) : config.port;
     config.encryption = encryption || config.encryption;
@@ -130,7 +131,7 @@ const updateSmtpConfig = async (req, res) => {
     if (password) config.password = password; // Only update password if provided
     config.fromName = fromName ? fromName.trim() : config.fromName;
     config.fromEmail = fromEmail ? fromEmail.trim() : config.fromEmail;
-    config.isDefault = isDefault !== undefined ? isDefault : config.isDefault;
+    config.isDefault = true;
 
     const updatedConfig = await config.save();
     return res.status(200).json(updatedConfig);
