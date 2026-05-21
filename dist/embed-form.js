@@ -14,6 +14,49 @@
     });
   }
 
+  /**
+   * intl-tel-input (and similar) often keep national digits in the visible input while the
+   * dial code is shown separately. Temporarily set the input value to E.164 for serialization.
+   * @returns {{ input: HTMLInputElement, prev: string }[]}
+   */
+  function getIntlTelInputInstance(input) {
+    try {
+      const g = window.intlTelInputGlobals;
+      if (g && typeof g.getInstance === "function") return g.getInstance(input);
+    } catch (_) {}
+    try {
+      const iti = window.intlTelInput;
+      if (iti && typeof iti.getInstance === "function") return iti.getInstance(input);
+    } catch (_) {}
+    return null;
+  }
+
+  function snapshotIntlTelInputValuesForSubmit(form) {
+    const backups = [];
+    try {
+      const inputs = form.querySelectorAll("input[type='tel'], input.iti__tel-input");
+      inputs.forEach((input) => {
+        try {
+          const iti = getIntlTelInputInstance(input);
+          if (!iti) return;
+          const full = iti.getNumber();
+          if (!full || !String(full).trim().startsWith("+")) return;
+          backups.push({ input, prev: input.value });
+          input.value = full;
+        } catch (_) {}
+      });
+    } catch (_) {}
+    return backups;
+  }
+
+  function restoreIntlTelInputValues(backups) {
+    (backups || []).forEach(({ input, prev }) => {
+      try {
+        input.value = prev;
+      } catch (_) {}
+    });
+  }
+
   async function handleSubmit(e) {
     const form = e.target;
 
@@ -39,7 +82,14 @@
     }
 
     try {
-      const formData = new FormData(form);
+      const intlBackups = snapshotIntlTelInputValuesForSubmit(form);
+      let formData;
+      try {
+        formData = new FormData(form);
+      } finally {
+        restoreIntlTelInputValues(intlBackups);
+      }
+
       const hasFileInputs = Array.from(form.elements).some(
         (el) => el.tagName === "INPUT" && el.type === "file"
       );

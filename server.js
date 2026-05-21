@@ -37,6 +37,7 @@ const {
   uploadBuffer,
 } = require("./utils/spaces");
 const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
+const { normalizePhoneFieldsInFormData } = require("./utils/phoneFields");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -306,6 +307,8 @@ async function handleFormSubmit(req, res) {
         cleanData[key] = req.body[key];
       }
     }
+
+    normalizePhoneFieldsInFormData(cleanData);
 
     const mongoForm = await Form.findById(formId).select("name settings user").lean();
 
