@@ -1,14 +1,33 @@
+const mongoose = require("mongoose");
 const Form = require("../models/formModel");
 const Folder = require("../models/folderModel");
 const { getMaxFormsForPlan, planAllowsProOnlySettings } = require("../utils/planLimits");
 
+/** "None (Direct Form)" sends ""; store null instead of casting "" to ObjectId. */
+function normalizeOptionalFolderId(folderId) {
+  if (folderId == null || folderId === "" || folderId === "null") {
+    return { value: null };
+  }
+  const id = String(folderId).trim();
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return { error: "Invalid folder selected." };
+  }
+  return { value: id };
+}
+
 const createForm = async (req, res) => {
   try {
-    const { name, timezone, folderId, settings, vendorId } = req.body;
+    const { name, timezone, folderId: rawFolderId, settings, vendorId } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: "Form name is required" });
     }
+
+    const folderResolved = normalizeOptionalFolderId(rawFolderId);
+    if (folderResolved.error) {
+      return res.status(400).json({ message: folderResolved.error });
+    }
+    const folderId = folderResolved.value;
 
     if (folderId) {
       const folder = await Folder.findOne({ _id: folderId, user: req.user._id });
@@ -45,6 +64,11 @@ const createForm = async (req, res) => {
 
     return res.status(201).json(form);
   } catch (error) {
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Could not create form. Check the folder and other fields.",
+      });
+    }
     return res.status(500).json({ message: error.message });
   }
 };

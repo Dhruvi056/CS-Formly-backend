@@ -163,6 +163,85 @@ function normalizeCleanDataForEmail(cleanData) {
   return source;
 }
 
+/** Turn "NAME-2" / "enquiryType-2" into "Name 2" / "Enquiry Type 2" for email labels. */
+function formatFieldLabelForEmail(key) {
+  const raw = String(key || "").trim();
+  if (!raw) return "";
+  return raw
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const s = part.trim();
+      if (!s) return "";
+      if (/^\d+$/.test(s)) return s;
+      const lower = s.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+const EMAIL_FONT_STACK = "Segoe UI,Roboto,Helvetica,Arial,sans-serif";
+
+/** Two-column row: label left | value right (single table, no nested blocks). */
+function buildEmailFieldRow(key, value, { linkStyle = "", linkClass = "file-link" } = {}) {
+  const displayValue = renderDisplayValue(value, { key, linkStyle, linkClass });
+  const label = formatFieldLabelForEmail(key);
+  return `
+    <tr>
+      <td width="150" align="left" valign="top" style="width:150px;min-width:150px;max-width:150px;text-align:left !important;vertical-align:top;padding:10px 16px 10px 0;border-bottom:1px solid #eef2f7;color:#6b7280;font-size:11px;font-weight:700;letter-spacing:0.3px;font-family:${EMAIL_FONT_STACK};mso-line-height-rule:exactly;">
+        ${escapeHtml(label)}
+      </td>
+      <td align="left" valign="top" style="text-align:left !important;vertical-align:top;padding:10px 0;border-bottom:1px solid #eef2f7;color:#111827;font-size:14px;font-weight:400;font-family:${EMAIL_FONT_STACK};word-break:break-word;mso-line-height-rule:exactly;">
+        ${displayValue}
+      </td>
+    </tr>`;
+}
+
+function buildEmailFieldsTableHtml(data, options = {}) {
+  const rows = Object.entries(data || {})
+    .map(([key, value]) => buildEmailFieldRow(key, value, options))
+    .join("");
+  return `<table class="submission-fields-table" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" align="left" style="width:100%;border-collapse:collapse;mso-table-lspace:0;mso-table-rspace:0;">${rows}</table>`;
+}
+
+/** Fix legacy/custom Quill tables: Gmail centers <th> and breaks label alignment. */
+function normalizeFieldTablesInEmailHtml(html) {
+  if (!html || typeof html !== "string") return html;
+
+  let out = html;
+
+  out = out.replace(/<table(\s[^>]*)?>/gi, (match, attrs = "") => {
+    let a = String(attrs);
+    if (/style\s*=/i.test(a)) {
+      a = a.replace(/text-align:\s*center/gi, "text-align:left");
+    } else {
+      a += ' style="text-align:left !important;"';
+    }
+    if (!/align\s*=/i.test(a)) a = ` align="left"${a}`;
+    return `<table${a}>`;
+  });
+
+  const labelTdStyle =
+    "width:150px;min-width:150px;max-width:150px;text-align:left !important;vertical-align:top;font-weight:700;color:#6b7280;font-size:11px;padding:10px 16px 10px 0;border-bottom:1px solid #eef2f7;mso-line-height-rule:exactly;";
+
+  out = out.replace(/<th(\s[^>]*)?>/gi, (match, attrs = "") => {
+    let a = String(attrs)
+      .replace(/text-align:\s*[^;"]+/gi, "")
+      .replace(/text-transform:\s*uppercase/gi, "");
+    const styleMatch = a.match(/style\s*=\s*"([^"]*)"/i);
+    if (styleMatch) {
+      const merged = `${styleMatch[1]};${labelTdStyle}`.replace(/;;+/g, ";");
+      a = a.replace(/style\s*=\s*"[^"]*"/i, `style="${merged}"`);
+    } else {
+      a += ` style="${labelTdStyle}"`;
+    }
+    return `<td align="left" valign="top"${a}>`;
+  });
+  out = out.replace(/<\/th>/gi, "</td>");
+
+  return out;
+}
+
 function looksLikeFileUrl(url) {
   if (typeof url !== "string") return false;
   const lower = url.toLowerCase();
@@ -283,19 +362,7 @@ function processCidImages(html, attachments) {
 function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, metadata = {} }) {
   const { submittedAt, ipAddress } = metadata;
   const normalizedData = normalizeCleanDataForEmail(cleanData);
-  const rows = Object.entries(normalizedData)
-    .map(([key, value]) => {
-      const displayValue = renderDisplayValue(value, {
-        key,
-        linkClass: "file-link",
-      });
-      return `
-        <tr>
-          <th>${escapeHtml(key)}</th>
-          <td>${displayValue}</td>
-        </tr>`;
-    })
-    .join("");
+  const fieldsTable = buildEmailFieldsTableHtml(normalizedData, { linkClass: "file-link" });
 
   return `
 <!DOCTYPE html>
@@ -314,11 +381,9 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
     .card-inner { padding: 14px 16px; }
     .card-title { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #111827; }
     .card-link { font-size: 12px; color: #4f46e5; text-decoration: none; word-break: break-all; }
-    .table { width: 100%; border-collapse: collapse; }
-    .table th, .table td { padding: 10px 0; border-bottom: 1px solid #eef2f7; vertical-align: top; }
-    .table tr:last-child th, .table tr:last-child td { border-bottom: 0; }
-    .table th { width: 38%; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; padding-right: 14px; }
-    .table td { color: #111827; font-size: 14px; font-weight: 500; word-break: break-word; }
+    .submission-fields-table { width: 100%; border-collapse: collapse; }
+    .submission-fields-table td { text-align: left !important; vertical-align: top; }
+    .submission-fields-table tr:last-child td { border-bottom: 0; }
     .meta-section { margin-top: 6px; border-top: 1px dashed #e5e7eb; padding-top: 10px; }
     .meta-row { display: table; width: 100%; font-size: 12px; color: #6b7280; margin: 6px 0; }
     .meta-label, .meta-value { display: table-cell; }
@@ -327,7 +392,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
     .footer { background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eef2f7; }
     .btn { display: inline-block; padding: 12px 20px; background-color: #5b63f6; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }
     .btn-container { text-align: center; padding-top: 14px; }
-    .file-link { color: #6571ff; text-decoration: none; font-weight: 600; }
+    .file-link { color: #6571ff; text-decoration: none; font-weight: 400; }
   </style>
 </head>
 <body>
@@ -346,7 +411,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 
       <div class="card">
         <div class="card-inner">
-          <table class="table">${rows}</table>
+          ${fieldsTable}
         </div>
       </div>
 
@@ -409,21 +474,10 @@ async function sendSubmissionNotificationEmails({
 
     // Support an {{AllFields}} macro that dynamically dumps all form fields
     if (baseHtml.includes('{{AllFields}}') || baseHtml.includes('{AllFields}')) {
-      const rowsHtml = Object.entries(normalizedData)
-        .map(([key, value]) => {
-          const displayValue = renderDisplayValue(value, {
-            key,
-            linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
-          });
-          return `
-            <tr>
-              <th style="text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px;">${escapeHtml(key)}</th>
-              <td style="padding-bottom: 12px; border-bottom: 1px solid #edf1f7; color: #060c17; font-size: 15px; font-weight: 500; word-break: break-all;">${displayValue}</td>
-            </tr>`;
-        })
-        .join("");
-
-      const allFieldsTable = `<table style="width: 100%; border-collapse: separate; border-spacing: 0 12px;">${rowsHtml}</table>`;
+      const allFieldsTable = buildEmailFieldsTableHtml(normalizedData, {
+        linkStyle: "color: #6571ff; text-decoration: none; font-weight: 400;",
+        linkClass: "",
+      });
       baseHtml = baseHtml.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
     }
 
@@ -458,7 +512,10 @@ async function sendSubmissionNotificationEmails({
   // Process CID images
   const urlBackedAttachments = collectUrlBackedAttachments(normalizedData, attachments);
   const finalAttachments = [...attachments, ...urlBackedAttachments];
-  const finalHtml = processCidImages(baseHtml, finalAttachments);
+  const finalHtml = processCidImages(
+    normalizeFieldTablesInEmailHtml(baseHtml),
+    finalAttachments
+  );
 
   const to = recipients;
   const cc = ccRecipients;
@@ -594,21 +651,10 @@ async function sendAutoresponderEmail({
   // Support an {{AllFields}} macro
   if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
     const normalizedData = normalizeCleanDataForEmail(cleanData);
-    const rowsHtml = Object.entries(normalizedData)
-      .map(([key, value]) => {
-        const displayValue = renderDisplayValue(value, {
-          key,
-          linkStyle: "color: #6571ff; text-decoration: none; font-weight: 600;",
-        });
-        return `
-          <tr>
-            <th style="text-align: left; vertical-align: top; padding: 0 15px 0 0; color: #7987a1; font-size: 12px; text-transform: uppercase; font-weight: 600; width: 35%; padding-top: 4px;">${escapeHtml(key)}</th>
-            <td style="padding-bottom: 12px; border-bottom: 1px solid #edf1f7; color: #060c17; font-size: 15px; font-weight: 500; word-break: break-all;">${displayValue}</td>
-          </tr>`;
-      })
-      .join("");
-
-    const allFieldsTable = `<table style="width: 100%; border-collapse: separate; border-spacing: 0 12px;">${rowsHtml}</table>`;
+    const allFieldsTable = buildEmailFieldsTableHtml(normalizedData, {
+      linkStyle: "color: #6571ff; text-decoration: none; font-weight: 400;",
+      linkClass: "",
+    });
     html = html.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
   }
 
@@ -669,7 +715,10 @@ async function sendAutoresponderEmail({
     }
   }
 
-  const processedHtml = processCidImages(html, finalAttachments);
+  const processedHtml = processCidImages(
+    normalizeFieldTablesInEmailHtml(html),
+    finalAttachments
+  );
 
   console.log(`Sending autoresponder email to: ${to} from: ${fromUser} (${senderName})`);
 

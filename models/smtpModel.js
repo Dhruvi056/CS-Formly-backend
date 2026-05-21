@@ -44,6 +44,13 @@ const smtpSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /** Forms that send notification + autoresponder mail through this SMTP account */
+    assignedFormIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Form",
+      },
+    ],
   },
   { timestamps: true }
 );

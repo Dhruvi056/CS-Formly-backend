@@ -23,7 +23,6 @@ const { handleStripeWebhook } = require("./controllers/billingController");
 const User = require("./models/userModel");
 const Form = require("./models/formModel");
 const Submission = require("./models/submissionModel");
-const SmtpConfig = require("./models/smtpModel");
 const {
   parseNotificationEmails,
   sendSubmissionNotificationEmails,
@@ -38,6 +37,7 @@ const {
 } = require("./utils/spaces");
 const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 const { normalizePhoneFieldsInFormData } = require("./utils/phoneFields");
+const { resolveMailerForForm } = require("./utils/resolveSmtp");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -401,37 +401,24 @@ async function handleFormSubmit(req, res) {
       const dashboardUrl = dashboardBase ? `${dashboardBase}${dashboardPath}` : dashboardPath;
 
       try {
-        // 1. Check if the user has a custom SMTP configuration
-        const customSmtp = await SmtpConfig.findOne({ user: mongoForm.user })
-          .sort({ isDefault: -1, updatedAt: -1 })
-          .lean();
+        const mailer = await resolveMailerForForm({
+          userId: mongoForm.user,
+          formId,
+          defaultTransporter: transporter,
+          defaultFromUser: process.env.EMAIL_USER,
+          defaultFromName: "Concatstring",
+        });
 
-        let finalTransporter = transporter;
-        let finalFromUser = process.env.EMAIL_USER;
-        let finalFromName = "Concatstring";
+        const finalTransporter = mailer.transporter;
+        const finalFromUser = mailer.fromUser;
+        const finalFromName = mailer.fromName;
 
-        if (customSmtp) {
-          console.log(`Using custom SMTP for user ${mongoForm.user}: ${customSmtp.host}`);
-          try {
-            finalTransporter = nodemailer.createTransport({
-              host: customSmtp.host,
-              port: customSmtp.port,
-              secure: customSmtp.encryption === "SSL" || customSmtp.port === 465,
-              auth: {
-                user: customSmtp.username,
-                pass: customSmtp.password,
-              },
-              tls: {
-                rejectUnauthorized: false,
-              },
-            });
-            finalFromUser = customSmtp.fromEmail;
-            finalFromName = customSmtp.fromName;
-          } catch (e) {
-            console.error("Failed to create custom transporter, falling back to default:", e);
-          }
+        if (mailer.source === "custom") {
+          console.log(
+            `Using custom SMTP for form ${formId} (config ${mailer.smtpConfigId})`
+          );
         } else {
-          console.log(`Using default system SMTP for user ${mongoForm.user}`);
+          console.log(`Using system SMTP for form ${formId} (user ${mongoForm.user})`);
         }
 
         const metadata = {
