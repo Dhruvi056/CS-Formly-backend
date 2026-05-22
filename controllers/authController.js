@@ -2,9 +2,31 @@ const User = require("../models/userModel");
 const generateToken = require("../utils/generateToken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { OAuth2Client } = require("google-auth-library");
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
+
+function buildAuthUserResponse(user) {
+  return {
+    id: user._id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    name: `${user.firstName} ${user.lastName}`.trim(),
+    email: user.email,
+    role: user.role,
+    photoURL: user.photoURL || user.profileImage || "",
+    coverURL: user.coverURL || user.coverImage || "",
+    joined: user.joined || "",
+    lives: user.lives || "",
+    website: user.website || "",
+    about: user.about || "",
+    subscriptionPlan: user.subscriptionPlan || "free",
+    isEmailVerified: user.isEmailVerified,
+    createdAt: user.createdAt,
+    token: generateToken(user._id),
+  };
+}
 
 function normalizeBaseUrl(value = "") {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -326,29 +348,96 @@ const loginUser = async (req, res) => {
         });
       }
 
-      return res.json({
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        name: `${user.firstName} ${user.lastName}`.trim(),
-        email: user.email,
-        role: user.role,
-        photoURL: user.photoURL || user.profileImage || "",
-        coverURL: user.coverURL || user.coverImage || "",
-        joined: user.joined || "",
-        lives: user.lives || "",
-        website: user.website || "",
-        about: user.about || "",
-        subscriptionPlan: user.subscriptionPlan || "free",
-        isEmailVerified: user.isEmailVerified,
-        createdAt: user.createdAt,
-        token: generateToken(user._id),
-      });
+      return res.json(buildAuthUserResponse(user));
     }
 
     return res.status(401).json({ message: "Invalid email or password" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
+  }
+};
+
+const googleLogin = async (req, res) => {
+  try {
+    const { credential } = req.body;
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      return res.status(503).json({ message: "Google sign-in is not configured on the server." });
+    }
+
+    if (!credential) {
+      return res.status(400).json({ message: "Google credential is required." });
+    }
+
+    const googleClient = new OAuth2Client(clientId);
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+    const googleId = payload?.sub;
+    const email = String(payload?.email || "").trim().toLowerCase();
+    const givenName = String(payload?.given_name || "").trim();
+    const familyName = String(payload?.family_name || "").trim();
+    const fullName = String(payload?.name || "").trim();
+    const picture = String(payload?.picture || "").trim();
+
+    if (!googleId || !email) {
+      return res.status(400).json({ message: "Google account information is incomplete." });
+    }
+
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email from Google account." });
+    }
+
+    let user = await User.findOne({ email }).select("+password");
+
+    if (user) {
+      if (user.isDeleted) {
+        return res.status(403).json({ message: "This account has been deleted." });
+      }
+
+      if (user.googleId && user.googleId !== googleId) {
+        return res.status(409).json({
+          message: "This email is already linked to a different Google account.",
+        });
+      }
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+
+      if (picture) {
+        user.photoURL = picture;
+        user.profileImage = picture;
+      }
+
+      user.isEmailVerified = true;
+      await user.save();
+    } else {
+      const nameParts = fullName ? fullName.split(/\s+/) : [];
+      const firstName = givenName || nameParts[0] || "User";
+      const lastName = familyName || nameParts.slice(1).join(" ") || "";
+      const randomPassword = crypto.randomBytes(32).toString("hex");
+
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        password: randomPassword,
+        googleId,
+        role: "vendor_admin",
+        isEmailVerified: true,
+        photoURL: picture,
+      });
+    }
+
+    return res.json(buildAuthUserResponse(user));
+  } catch (error) {
+    console.error("Google login failed:", error?.message || error);
+    return res.status(401).json({ message: "Google sign-in failed. Please try again." });
   }
 };
 
@@ -508,6 +597,12 @@ const updateMyProfile = async (req, res) => {
   }
 };
 
+const getAuthConfig = (req, res) => {
+  const googleClientId =
+    process.env.GOOGLE_CLIENT_ID || process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
+  return res.json({ googleClientId });
+};
+
 const verifyEmail = async (req, res) => {
   try {
     const token = String(req.query.token || "").trim();
@@ -536,5 +631,15 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMyProfile, updateMyProfile, changePassword, deleteAccount, verifyEmail };
+module.exports = {
+  registerUser,
+  loginUser,
+  googleLogin,
+  getAuthConfig,
+  getMyProfile,
+  updateMyProfile,
+  changePassword,
+  deleteAccount,
+  verifyEmail,
+};
 
