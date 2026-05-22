@@ -108,7 +108,7 @@ function buildVerificationEmailHtml(link) {
     <div class="content">
       <div class="card">
         <div class="card-inner">
-          <h2 class="card-title">Welcome to CS Formly!</h2>
+          <h2 class="card-title">Welcome to FormBridge.ai!</h2>
           <p class="body-text">We're excited to have you onboard. Please verify your email address to activate your account and start managing your forms.</p>
           
           <div class="btn-container">
@@ -127,7 +127,7 @@ function buildVerificationEmailHtml(link) {
       </div>
     </div>
     <div class="footer">
-      This email was sent via <strong>CS Formly</strong> - the all-in-one headless form solution.
+      This email was sent via <strong>FormBridge.ai</strong> - the all-in-one headless form solution.
     </div>
   </div>
 </body>
@@ -183,7 +183,7 @@ async function sendVerificationEmail({ to, link }) {
             <td style="padding:40px 35px; color:#374151;">
 
               <h2 style="margin-top:0; color:#111827;">
-                Welcome to CS Formly!
+                Welcome to FormBridge.ai!
               </h2>
 
               <p style="font-size:15px; line-height:1.7;">
@@ -228,7 +228,7 @@ async function sendVerificationEmail({ to, link }) {
               color:#94a3b8;">
 
               This email was sent via
-              <strong>CS Formly</strong>
+              <strong>FormBridge.ai</strong>
             </td>
           </tr>
 
@@ -243,9 +243,9 @@ async function sendVerificationEmail({ to, link }) {
 `;
 
   await transporter.sendMail({
-    from: `"CS Formly" <${process.env.EMAIL_USER}>`,
+    from: `"FormBridge.ai" <${process.env.EMAIL_USER}>`,
     to,
-    subject: "Verify your CS Formly account",
+    subject: "Verify your FormBridge.ai account",
     html: htmlTemplate,
   });
 }

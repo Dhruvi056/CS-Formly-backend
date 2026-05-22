@@ -25,7 +25,7 @@ async function resolveMailerForForm({
   formId,
   defaultTransporter,
   defaultFromUser,
-  defaultFromName = "Concatstring",
+  defaultFromName = "FormBridge.ai",
 }) {
   let config = null;
 

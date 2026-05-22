@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 
-const EMAIL_BRAND_NAME = "Concatstring";
+const EMAIL_BRAND_NAME = "FormBridge.ai";
 
 function escapeHtml(s) {
   if (s == null) return "";

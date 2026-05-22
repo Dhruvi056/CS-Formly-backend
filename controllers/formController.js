@@ -169,7 +169,7 @@ const updateForm = async (req, res) => {
         if (wantsProOnly) {
           return res.status(403).json({
             message:
-              "Autoresponder, custom email sender, and removing CS Formly branding require Pro or Business. Upgrade your plan under Upgrade plan.",
+              "Autoresponder, custom email sender, and removing FormBridge.ai branding require Pro or Business. Upgrade your plan under Upgrade plan.",
             code: "PRO_FEATURE_REQUIRED",
           });
         }
@@ -271,7 +271,7 @@ const testTemplate = async (req, res) => {
     });
 
     await transporter.sendMail({
-      from: `"CS Formly Test" <${process.env.EMAIL_USER}>`,
+      from: `"FormBridge.ai Test" <${process.env.EMAIL_USER}>`,
       to: req.user.email,
       subject: `Test Custom Template - ${form.name}`,
       html: html,
