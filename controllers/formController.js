@@ -169,7 +169,7 @@ const updateForm = async (req, res) => {
         if (wantsProOnly) {
           return res.status(403).json({
             message:
-              "Autoresponder, custom email sender, and removing FormBridge.ai branding require Pro or Business. Upgrade your plan under Upgrade plan.",
+              "Autoresponder, custom email sender, and removing formbridge.ai branding require Pro or Business. Upgrade your plan under Upgrade plan.",
             code: "PRO_FEATURE_REQUIRED",
           });
         }
@@ -203,17 +203,34 @@ const saveTemplate = async (req, res) => {
       }
     }
 
-    const { customTemplateEnabled, customTemplateBody } = req.body;
-    
-    const currentSettings = form.settings && typeof form.settings.toObject === "function"
-      ? form.settings.toObject()
-      : form.settings || {};
+    const {
+      customTemplateEnabled,
+      customTemplateBody,
+      customTemplateDesign,
+    } = req.body;
 
-    form.settings = { 
-      ...currentSettings, 
-      customTemplateEnabled: !!customTemplateEnabled,
-      customTemplateBody: customTemplateBody || ""
+    const currentSettings =
+      form.settings && typeof form.settings.toObject === "function"
+        ? form.settings.toObject()
+        : form.settings || {};
+
+    const nextSettings = {
+      ...currentSettings,
+      customTemplateEnabled:
+        customTemplateEnabled !== undefined
+          ? !!customTemplateEnabled
+          : currentSettings.customTemplateEnabled,
+      customTemplateBody:
+        customTemplateBody !== undefined
+          ? String(customTemplateBody || "")
+          : currentSettings.customTemplateBody,
     };
+
+    if (customTemplateDesign !== undefined) {
+      nextSettings.customTemplateDesign = customTemplateDesign || null;
+    }
+
+    form.set("settings", nextSettings);
 
     const updatedForm = await form.save();
     return res.json(updatedForm);
@@ -235,34 +252,63 @@ const testTemplate = async (req, res) => {
       }
     }
 
-    const { templateBody } = req.body;
-    if (!templateBody) {
+    const {
+      templateBody,
+      sendEmail = true,
+    } = req.body;
+
+    const htmlSource =
+      templateBody ||
+      form.settings?.customTemplateBody ||
+      "";
+
+    if (!htmlSource) {
       return res.status(400).json({ message: "Template body is required" });
     }
 
-    // Replace sample variables
-    const sampleData = {
-      name: "John Doe",
-      email: "john@example.com",
-      message: "This is a test message from your custom template."
-    };
-
-    let html = templateBody;
-    for (const key in sampleData) {
-      const val = sampleData[key];
-      const placeholder = new RegExp(`{${key}}`, 'g');
-      html = html.replace(placeholder, val);
-    }
-    
-    // We can also allow {{name}} syntax if they use that
-    for (const key in sampleData) {
-      const val = sampleData[key];
-      const placeholder = new RegExp(`{{${key}}}`, 'g');
-      html = html.replace(placeholder, val);
-    }
-
+    const {
+      applyCustomTemplatePlaceholders,
+      getSampleTemplateData,
+    } = require("../utils/emailTemplate");
+    const { resolveMailerForForm } = require("../utils/resolveSmtp");
     const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
+
+    const sampleData = getSampleTemplateData();
+    const dashboardUrl =
+      process.env.FRONTEND_URL ||
+      process.env.PUBLIC_BASE_URL ||
+      "https://formbridge.ai";
+
+    const processedHtml = applyCustomTemplatePlaceholders(htmlSource, {
+      formName: form.name,
+      formId: String(form._id),
+      dashboardUrl: `${String(dashboardUrl).replace(/\/+$/, "")}/forms/${form._id}`,
+      cleanData: sampleData,
+      metadata: {
+        submittedAt: new Date().toLocaleString("en-US", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        ipAddress: "127.0.0.1",
+      },
+    });
+
+    if (!sendEmail) {
+      return res.json({
+        message: "Preview generated",
+        html: processedHtml,
+      });
+    }
+
+    if (!req.user.email) {
+      return res.status(400).json({ message: "Your account has no email address" });
+    }
+
+    const defaultTransporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
@@ -270,16 +316,28 @@ const testTemplate = async (req, res) => {
       },
     });
 
-    await transporter.sendMail({
-      from: `"FormBridge.ai Test" <${process.env.EMAIL_USER}>`,
-      to: req.user.email,
-      subject: `Test Custom Template - ${form.name}`,
-      html: html,
+    const mailer = await resolveMailerForForm({
+      userId: form.user,
+      formId: form._id,
+      defaultTransporter,
+      defaultFromUser: process.env.EMAIL_USER,
+      defaultFromName: "formbridge.ai",
     });
 
-    return res.json({ message: "Test email sent successfully" });
+    await mailer.transporter.sendMail({
+      from: `"${mailer.fromName || "formbridge.ai"}" <${mailer.fromUser}>`,
+      to: req.user.email,
+      subject: `Test Custom Template - ${form.name}`,
+      html: processedHtml,
+    });
+
+    return res.json({
+      message: `Test email sent to ${req.user.email}`,
+      html: processedHtml,
+    });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error("testTemplate error:", error);
+    return res.status(500).json({ message: error.message || "Failed to send test email" });
   }
 };
 

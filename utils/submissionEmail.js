@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 
-const EMAIL_BRAND_NAME = "FormBridge.ai";
+const EMAIL_BRAND_NAME = "formbridge.ai";
 
 function escapeHtml(s) {
   if (s == null) return "";
@@ -180,7 +180,12 @@ function formatFieldLabelForEmail(key) {
     .join(" ");
 }
 
-const EMAIL_FONT_STACK = "Segoe UI,Roboto,Helvetica,Arial,sans-serif";
+const EMAIL_FONT_STACK = "'Work Sans',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const EMAIL_FONT_IMPORT =
+  "@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;600;700&display=swap');";
+const BRAND_PRIMARY = "#184BFB";
+const BRAND_DARK = "#0e1116";
+const BRAND_CREAM = "#f3f2ec";
 
 /** Two-column row: label left | value right (single table, no nested blocks). */
 function buildEmailFieldRow(key, value, { linkStyle = "", linkClass = "file-link" } = {}) {
@@ -370,9 +375,10 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f8; margin: 0; padding: 20px 0; color: #111827; }
+    ${EMAIL_FONT_IMPORT}
+    body { font-family: ${EMAIL_FONT_STACK}; background-color: ${BRAND_CREAM}; margin: 0; padding: 20px 0; color: #111827; }
     .container { max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e5e7eb; }
-    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 34px 24px 28px; text-align: center; color: white; }
+    .header { background: linear-gradient(135deg, ${BRAND_PRIMARY} 0%, ${BRAND_DARK} 100%); padding: 34px 24px 28px; text-align: center; color: white; }
     .logo { font-size: 32px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 8px; color: #ffffff; }
     .logo span { color: rgba(255,255,255,0.78); font-weight: 500; }
     .title { font-size: 12px; font-weight: 600; letter-spacing: 2.5px; opacity: 0.95; text-transform: uppercase; }
@@ -380,7 +386,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
     .card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
     .card-inner { padding: 14px 16px; }
     .card-title { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #111827; }
-    .card-link { font-size: 12px; color: #4f46e5; text-decoration: none; word-break: break-all; }
+    .card-link { font-size: 12px; color: #184BFB; text-decoration: none; word-break: break-all; }
     .submission-fields-table { width: 100%; border-collapse: collapse; }
     .submission-fields-table td { text-align: left !important; vertical-align: top; }
     .submission-fields-table tr:last-child td { border-bottom: 0; }
@@ -390,9 +396,9 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
     .meta-label { font-weight: 700; }
     .meta-value { color: #111827; text-align: right; }
     .footer { background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eef2f7; }
-    .btn { display: inline-block; padding: 12px 20px; background-color: #5b63f6; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }
+    .btn { display: inline-block; padding: 12px 20px; background-color: #184BFB; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }
     .btn-container { text-align: center; padding-top: 14px; }
-    .file-link { color: #6571ff; text-decoration: none; font-weight: 400; }
+    .file-link { color: #184BFB; text-decoration: none; font-weight: 400; }
   </style>
 </head>
 <body>
@@ -467,38 +473,18 @@ async function sendSubmissionNotificationEmails({
     return;
   }
 
+  const { applyCustomTemplatePlaceholders } = require("./emailTemplate");
+
   // Pre-build common parts to save time
   let baseHtml;
   if (customTemplateEnabled && customTemplateBody) {
-    baseHtml = customTemplateBody;
-
-    // Support an {{AllFields}} macro that dynamically dumps all form fields
-    if (baseHtml.includes('{{AllFields}}') || baseHtml.includes('{AllFields}')) {
-      const allFieldsTable = buildEmailFieldsTableHtml(normalizedData, {
-        linkStyle: "color: #6571ff; text-decoration: none; font-weight: 400;",
-        linkClass: "",
-      });
-      baseHtml = baseHtml.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
-    }
-
-    for (const key in normalizedData) {
-      const val = normalizedData[key];
-      const safeVal = escapeHtml(valueToText(val));
-      baseHtml = baseHtml.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), safeVal);
-      baseHtml = baseHtml.replace(new RegExp(`\\{${key}\\}`, "gi"), safeVal);
-    }
-
-    const metaVars = {
-      FormName: formName || formId,
-      DashboardUrl: dashboardUrl,
-      SubmittedAt: metadata.submittedAt || new Date().toLocaleString(),
-      IpAddress: metadata.ipAddress || "Unknown"
-    };
-
-    for (const key in metaVars) {
-      baseHtml = baseHtml.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'gi'), metaVars[key]);
-      baseHtml = baseHtml.replace(new RegExp(`\\{${key}\\}`, 'gi'), metaVars[key]);
-    }
+    baseHtml = applyCustomTemplatePlaceholders(customTemplateBody, {
+      formName,
+      formId,
+      dashboardUrl,
+      cleanData: normalizedData,
+      metadata,
+    });
   } else {
     baseHtml = buildSubmissionEmailHtml({
       formName,
@@ -652,7 +638,7 @@ async function sendAutoresponderEmail({
   if (html.includes("{{AllFields}}") || html.includes("{AllFields}")) {
     const normalizedData = normalizeCleanDataForEmail(cleanData);
     const allFieldsTable = buildEmailFieldsTableHtml(normalizedData, {
-      linkStyle: "color: #6571ff; text-decoration: none; font-weight: 400;",
+      linkStyle: "color: #184BFB; text-decoration: none; font-weight: 400;",
       linkClass: "",
     });
     html = html.replace(/\{\{AllFields\}\}/g, allFieldsTable).replace(/\{AllFields\}/g, allFieldsTable);
@@ -733,9 +719,10 @@ async function sendAutoresponderEmail({
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 0; }
+    ${EMAIL_FONT_IMPORT}
+    body { font-family: ${EMAIL_FONT_STACK}; background-color: ${BRAND_CREAM}; margin: 0; padding: 0; }
     .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid #e1e8ed; }
-    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 30px 20px; text-align: center; color: white; }
+    .header { background: linear-gradient(135deg, ${BRAND_PRIMARY} 0%, ${BRAND_DARK} 100%); padding: 30px 20px; text-align: center; color: white; }
     .logo { font-size: 24px; font-weight: 800; letter-spacing: -1px; color: #ffffff; }
     .logo span { color: rgba(255,255,255,0.7); font-weight: 400; }
     .content { padding: 40px; color: #334155; line-height: 1.6; font-size: 16px; }
@@ -762,6 +749,7 @@ async function sendAutoresponderEmail({
 module.exports = {
   normalizeCleanDataForEmail,
   valueToText,
+  buildEmailFieldsTableHtml,
   parseNotificationEmails,
   buildSubmissionEmailHtml,
   sendSubmissionNotificationEmails,

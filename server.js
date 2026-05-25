@@ -406,7 +406,7 @@ async function handleFormSubmit(req, res) {
           formId,
           defaultTransporter: transporter,
           defaultFromUser: process.env.EMAIL_USER,
-          defaultFromName: "FormBridge.ai",
+          defaultFromName: "formbridge.ai",
         });
 
         const finalTransporter = mailer.transporter;
@@ -574,9 +574,9 @@ app.post("/api/auth/reset-password", async (req, res) => {
     }
 
     await transporter.sendMail({
-      from: `"FormBridge.ai" <${process.env.EMAIL_USER}>`,
+      from: `"formbridge.ai" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: "Reset your FormBridge.ai Password",
+      subject: "Reset your formbridge.ai password",
       html: `
         <p>Click the link below to reset your password:</p>
         <p><a href="${customResetLink}">${customResetLink}</a></p>

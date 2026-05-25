@@ -80,9 +80,10 @@ function buildVerificationEmailHtml(link) {
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f8; margin: 0; padding: 20px 0; color: #111827; }
+    @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;600;700&display=swap');
+    body { font-family: 'Work Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f2ec; margin: 0; padding: 20px 0; color: #111827; }
     .container { max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; }
-    .header { background: linear-gradient(135deg, #6571ff 0%, #060c17 100%); padding: 34px 24px 28px; text-align: center; color: white; }
+    .header { background: linear-gradient(135deg, #184BFB 0%, #0e1116 100%); padding: 34px 24px 28px; text-align: center; color: white; }
     .logo { font-size: 32px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 8px; color: #ffffff; }
     .logo span { color: rgba(255,255,255,0.78); font-weight: 500; }
     .title { font-size: 12px; font-weight: 600; letter-spacing: 2.5px; opacity: 0.95; text-transform: uppercase; }
@@ -92,9 +93,9 @@ function buildVerificationEmailHtml(link) {
     .card-title { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #111827; }
     .body-text { color: #374151; font-size: 15px; line-height: 1.6; margin-bottom: 20px; }
     .btn-container { text-align: center; padding: 10px 0 20px; }
-    .btn { display: inline-block; padding: 12px 24px; background-color: #5b63f6; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; }
+    .btn { display: inline-block; padding: 12px 24px; background-color: #184BFB; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; }
     .link-text { color: #6b7280; font-size: 12px; word-break: break-all; margin-top: 20px; text-align: center; }
-    .link-text a { color: #5b63f6; text-decoration: none; }
+    .link-text a { color: #184BFB; text-decoration: none; }
     .footer { background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; }
     .note { color: #9ca3af; font-size: 12px; margin-top: 12px; }
   </style>
@@ -102,13 +103,13 @@ function buildVerificationEmailHtml(link) {
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo"><span style="font-weight: 800; color: #ffffff;">CS</span>&nbsp;<span>Formly</span></div>
+      <div class="logo" style="font-family: 'Work Sans', sans-serif; font-weight: 600;">formbridge<span style="font-family: 'Instrument Serif', serif; color: rgba(255,255,255,0.95);">.ai</span></div>
       <div class="title">Verify Account</div>
     </div>
     <div class="content">
       <div class="card">
         <div class="card-inner">
-          <h2 class="card-title">Welcome to FormBridge.ai!</h2>
+          <h2 class="card-title">Welcome to formbridge.ai!</h2>
           <p class="body-text">We're excited to have you onboard. Please verify your email address to activate your account and start managing your forms.</p>
           
           <div class="btn-container">
@@ -127,7 +128,7 @@ function buildVerificationEmailHtml(link) {
       </div>
     </div>
     <div class="footer">
-      This email was sent via <strong>FormBridge.ai</strong> - the all-in-one headless form solution.
+      This email was sent via <strong>formbridge.ai</strong> - the all-in-one headless form solution.
     </div>
   </div>
 </body>
@@ -154,9 +155,9 @@ async function sendVerificationEmail({ to, link }) {
 <head>
   <meta charset="UTF-8" />
 </head>
-<body style="margin:0; padding:0; background:#f3f4f8; font-family:Arial,sans-serif;">
+<body style="margin:0; padding:0; background:#f3f2ec; font-family:'Work Sans',Arial,sans-serif;">
 
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8; padding:40px 0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f2ec; padding:40px 0;">
     <tr>
       <td align="center">
 
@@ -165,11 +166,11 @@ async function sendVerificationEmail({ to, link }) {
           <!-- Header -->
           <tr>
             <td align="center"
-              style="background:linear-gradient(135deg,#6571ff 0%,#060c17 100%);
+              style="background:linear-gradient(135deg,#184BFB 0%,#0e1116 100%);
               padding:35px 20px; color:white;">
 
-              <div style="font-size:32px; font-weight:800;">
-                CS <span style="font-weight:400; opacity:.8;">Formly</span>
+              <div style="font-size:32px; font-weight:600; font-family:'Work Sans',Arial,sans-serif;">
+                formbridge<span style="font-family:'Instrument Serif',Georgia,serif; font-weight:400;">.ai</span>
               </div>
 
               <div style="margin-top:8px; font-size:12px; letter-spacing:2px;">
@@ -183,7 +184,7 @@ async function sendVerificationEmail({ to, link }) {
             <td style="padding:40px 35px; color:#374151;">
 
               <h2 style="margin-top:0; color:#111827;">
-                Welcome to FormBridge.ai!
+                Welcome to formbridge.ai!
               </h2>
 
               <p style="font-size:15px; line-height:1.7;">
@@ -193,7 +194,7 @@ async function sendVerificationEmail({ to, link }) {
               <div style="text-align:center; margin:35px 0;">
                 <a href="${link}"
                   style="
-                    background:#5b63f6;
+                    background:#184BFB;
                     color:#ffffff;
                     text-decoration:none;
                     padding:14px 28px;
@@ -211,7 +212,7 @@ async function sendVerificationEmail({ to, link }) {
               </p>
 
               <p style="word-break:break-all;">
-                <a href="${link}" style="color:#5b63f6;">
+                <a href="${link}" style="color:#184BFB;">
                   ${link}
                 </a>
               </p>
@@ -228,7 +229,7 @@ async function sendVerificationEmail({ to, link }) {
               color:#94a3b8;">
 
               This email was sent via
-              <strong>FormBridge.ai</strong>
+              <strong>formbridge.ai</strong>
             </td>
           </tr>
 
@@ -243,9 +244,9 @@ async function sendVerificationEmail({ to, link }) {
 `;
 
   await transporter.sendMail({
-    from: `"FormBridge.ai" <${process.env.EMAIL_USER}>`,
+    from: `"formbridge.ai" <${process.env.EMAIL_USER}>`,
     to,
-    subject: "Verify your FormBridge.ai account",
+    subject: "Verify your formbridge.ai account",
     html: htmlTemplate,
   });
 }
