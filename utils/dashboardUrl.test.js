@@ -4,6 +4,7 @@
 const assert = require("assert");
 const {
   resolveDashboardUrl,
+  resolvePublicApiBase,
   sanitizeDashboardUrl,
   isLegacyDashboardUrl,
 } = require("./dashboardUrl");
@@ -69,5 +70,20 @@ assert.ok(
   ),
   "sanitize must rewrite legacy URLs"
 );
+
+// Uploaded file URLs use the API host (not the Webflow embed origin).
+process.env.PUBLIC_BASE_URL = "";
+process.env.FRONTEND_URL = "";
+const apiBase = resolvePublicApiBase(
+  mockReq({
+    host: "app.formbridge.ai",
+    proto: "https",
+    origin: "https://concatstring-new.webflow.io",
+  })
+);
+assert.strictEqual(apiBase, "https://app.formbridge.ai", apiBase);
+
+const apiBaseFallback = resolvePublicApiBase(mockReq({ host: "", origin: "https://customer.com" }));
+assert.strictEqual(apiBaseFallback, "https://app.formbridge.ai", apiBaseFallback);
 
 console.log("dashboardUrl.test.js: all passed");

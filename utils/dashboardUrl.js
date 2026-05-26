@@ -84,6 +84,8 @@ function extractFormPathFromDashboardUrl(url) {
   return match ? match[0] : "";
 }
 
+const DEFAULT_API_BASE = "https://app.formbridge.ai";
+
 function getPublicRequestBase(req) {
   const publicBaseFromEnv = normalizedEnvBaseUrl(
     process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL
@@ -117,6 +119,19 @@ function getPublicRequestBase(req) {
   return publicBaseFromEnv && !isLegacyDashboardUrl(publicBaseFromEnv)
     ? publicBaseFromEnv
     : "";
+}
+
+/** Public API base for uploaded file URLs (same host that serves /uploads). */
+function resolvePublicApiBase(req) {
+  const fromRequest = getPublicRequestBase(req);
+  if (fromRequest) return fromRequest;
+
+  const fromEnv = normalizedEnvBaseUrl(
+    process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL
+  );
+  if (fromEnv && !isLegacyDashboardUrl(fromEnv)) return fromEnv;
+
+  return DEFAULT_API_BASE;
 }
 
 function resolveDashboardBase(req) {
@@ -192,6 +207,8 @@ function replaceLegacyDashboardLinks(html, dashboardUrl) {
 }
 
 module.exports = {
+  getPublicRequestBase,
+  resolvePublicApiBase,
   resolveDashboardBase,
   resolveDashboardUrl,
   sanitizeDashboardUrl,

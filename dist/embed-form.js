@@ -80,6 +80,10 @@
     if (submitBtn && !submitBtn.dataset.originalText) {
       submitBtn.dataset.originalText = submitBtn.textContent;
     }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+    }
 
     try {
       const intlBackups = snapshotIntlTelInputValuesForSubmit(form);
@@ -197,11 +201,17 @@
       }
 
     } catch (err) {
-      console.error(" Form submission error:", err);
+      console.error("Form submission error:", err);
       const container = form.closest(".w-form") || form.parentElement;
       const errorEl = container.querySelector(".w-form-fail");
       if (errorEl) {
         errorEl.style.display = "block";
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent =
+          submitBtn.dataset.originalText || submitBtn.textContent;
       }
     }
   }

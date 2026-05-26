@@ -39,7 +39,7 @@ const {
 const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 const { normalizePhoneFieldsInFormData } = require("./utils/phoneFields");
 const { resolveMailerForForm } = require("./utils/resolveSmtp");
-const { resolveDashboardUrl } = require("./utils/dashboardUrl");
+const { resolveDashboardUrl, resolvePublicApiBase } = require("./utils/dashboardUrl");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -77,6 +77,15 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
 });
+
+/** JSON embed submissions skip multer so express.json body is preserved. */
+function formSubmitUpload(req, res, next) {
+  const ct = String(req.headers["content-type"] || "").toLowerCase();
+  if (ct.includes("multipart/form-data")) {
+    return upload.any()(req, res, next);
+  }
+  return next();
+}
 
 
 // CORS: allow requests from any origin (forms can be embedded anywhere).
@@ -288,7 +297,7 @@ async function handleFormSubmit(req, res) {
         fs.writeFileSync(filePath, file.buffer);
 
         // Construct public URL
-        const requestBase = getPublicRequestBase(req);
+        const requestBase = resolvePublicApiBase(req);
         const url = `${requestBase}/uploads/${fileName}`;
 
         /* DigitalOcean Spaces implementation (Commented out for now)
@@ -456,7 +465,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     fs.writeFileSync(filePath, req.file.buffer);
 
-    const requestBase = getPublicRequestBase(req);
+    const requestBase = resolvePublicApiBase(req);
     const url = `${requestBase}/uploads/${fileName}`;
 
     return res.json({ url, key: fileName });
@@ -470,8 +479,8 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 });
 
 // Public submit endpoints for embedded forms
-app.post("/api/forms/:formId", upload.any(), handleFormSubmit);
-app.post("/api/f/:formId", upload.any(), handleFormSubmit);
+app.post("/api/forms/:formId", formSubmitUpload, handleFormSubmit);
+app.post("/api/f/:formId", formSubmitUpload, handleFormSubmit);
 
 /* -------------------- AUTHENTICATION API (Mongo-based reset) -------------------- */
 app.post("/api/auth/reset-password", async (req, res) => {
