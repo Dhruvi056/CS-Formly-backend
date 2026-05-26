@@ -4,6 +4,7 @@ const {
   buildEmailFieldsTableHtml,
 } = require("./submissionEmail");
 const { replaceLegacyDashboardLinks } = require("./dashboardUrl");
+const { buildEmailLogoHtml } = require("./emailBrand");
 
 function escapeHtml(s) {
   if (s == null) return "";
@@ -28,6 +29,13 @@ function applyCustomTemplatePlaceholders(html, {
 
   const normalizedData = normalizeCleanDataForEmail(cleanData);
   let baseHtml = html;
+
+  if (baseHtml.includes("{{EmailLogo}}") || baseHtml.includes("{EmailLogo}")) {
+    const logoHtml = buildEmailLogoHtml(null);
+    baseHtml = baseHtml
+      .replace(/\{\{EmailLogo\}\}/g, logoHtml)
+      .replace(/\{EmailLogo\}/g, logoHtml);
+  }
 
   if (baseHtml.includes("{{AllFields}}") || baseHtml.includes("{AllFields}")) {
     const allFieldsTable = buildEmailFieldsTableHtml(normalizedData, {

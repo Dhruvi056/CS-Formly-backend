@@ -13,8 +13,29 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Webflow/HTML checkboxes submit "on"; show Yes/No in emails. */
+function formatFieldValueForEmail(value) {
+  if (value == null) return value;
+  if (Array.isArray(value)) {
+    return value.map((v) => formatFieldValueForEmail(v));
+  }
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") {
+    const t = value.trim().toLowerCase();
+    if (t === "on" || t === "true") return "Yes";
+    if (t === "off" || t === "false") return "No";
+  }
+  return value;
+}
+
 function valueToText(value) {
   if (value == null) return "";
+  const formatted = formatFieldValueForEmail(value);
+  if (typeof formatted === "string") return formatted;
+  if (typeof formatted === "number" || typeof formatted === "boolean") {
+    return String(formatted);
+  }
+  value = formatted;
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
@@ -158,6 +179,10 @@ function normalizeCleanDataForEmail(cleanData) {
     if (keysToIgnore.some(k => k.toLowerCase() === key.toLowerCase())) {
       delete source[key];
     }
+  }
+
+  for (const key of Object.keys(source)) {
+    source[key] = formatFieldValueForEmail(source[key]);
   }
 
   return source;
@@ -404,7 +429,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo">${escapeHtml(EMAIL_BRAND_NAME)}</div>
+      <!--FORMBRIDGE_EMAIL_LOGO-->
       <div class="title">New Submission</div>
     </div>
     <div class="content">
@@ -445,6 +470,7 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 }
 
 const { sanitizeDashboardUrl } = require("./dashboardUrl");
+const { prepareBrandedEmail } = require("./emailBrand");
 
 async function sendSubmissionNotificationEmails({
   transporter,
@@ -513,15 +539,16 @@ async function sendSubmissionNotificationEmails({
 
   const usedCustomTemplate = useCustomTemplate;
 
-  // Process CID images
+  // Process CID images + sidebar logo in header
   const urlBackedAttachments = collectUrlBackedAttachments(normalizedData, attachments);
-  const finalAttachments = [...attachments, ...urlBackedAttachments];
-  // Unlayer/custom HTML uses nested layout tables — normalizeFieldTablesInEmailHtml
-  // breaks that design (test emails skip it; submissions must match).
   const htmlForSend = usedCustomTemplate
     ? baseHtml
     : normalizeFieldTablesInEmailHtml(baseHtml);
-  const finalHtml = processCidImages(htmlForSend, finalAttachments);
+  const { html: brandedHtml, attachments: brandedAttachments } = prepareBrandedEmail(
+    htmlForSend,
+    [...attachments, ...urlBackedAttachments]
+  );
+  const finalHtml = processCidImages(brandedHtml, brandedAttachments);
 
   const to = recipients;
   const cc = ccRecipients;
@@ -534,7 +561,7 @@ async function sendSubmissionNotificationEmails({
       to,
       cc,
       subject,
-      attachments: finalAttachments,
+      attachments: brandedAttachments,
       html: finalHtml,
     });
   } catch (err) {
@@ -721,19 +748,9 @@ async function sendAutoresponderEmail({
     }
   }
 
-  const processedHtml = processCidImages(
-    normalizeFieldTablesInEmailHtml(html),
-    finalAttachments
-  );
+  const processedBody = normalizeFieldTablesInEmailHtml(html);
 
-  console.log(`Sending autoresponder email to: ${to} from: ${fromUser} (${senderName})`);
-
-  await transporter.sendMail({
-    from: `"${senderName}" <${fromUser}>`,
-    to,
-    subject,
-    attachments: finalAttachments,
-    html: `
+  const fullHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -743,8 +760,6 @@ async function sendAutoresponderEmail({
     body { font-family: ${EMAIL_FONT_STACK}; background-color: ${BRAND_CREAM}; margin: 0; padding: 0; }
     .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid #e1e8ed; }
     .header { background: linear-gradient(135deg, ${BRAND_PRIMARY} 0%, ${BRAND_DARK} 100%); padding: 30px 20px; text-align: center; color: white; }
-    .logo { font-size: 24px; font-weight: 800; letter-spacing: -1px; color: #ffffff; }
-    .logo span { color: rgba(255,255,255,0.7); font-weight: 400; }
     .content { padding: 40px; color: #334155; line-height: 1.6; font-size: 16px; }
     .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #edf1f7; }
   </style>
@@ -752,21 +767,37 @@ async function sendAutoresponderEmail({
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo">${escapeHtml(EMAIL_BRAND_NAME)}</div>
+      <!--FORMBRIDGE_EMAIL_LOGO-->
     </div>
     <div class="content">
-      ${processedHtml}
+      ${processedBody}
     </div>
     <div class="footer">
       This email was sent via <strong>${escapeHtml(EMAIL_BRAND_NAME)}</strong>.
     </div>
   </div>
 </body>
-</html>`,
+</html>`;
+
+  const { html: brandedHtml, attachments: autoresponderAttachments } = prepareBrandedEmail(
+    fullHtml,
+    finalAttachments
+  );
+  const finalAutoresponderHtml = processCidImages(brandedHtml, autoresponderAttachments);
+
+  console.log(`Sending autoresponder email to: ${to} from: ${fromUser} (${senderName})`);
+
+  await transporter.sendMail({
+    from: `"${senderName}" <${fromUser}>`,
+    to,
+    subject,
+    attachments: autoresponderAttachments,
+    html: finalAutoresponderHtml,
   });
 }
 
 module.exports = {
+  formatFieldValueForEmail,
   normalizeCleanDataForEmail,
   valueToText,
   buildEmailFieldsTableHtml,

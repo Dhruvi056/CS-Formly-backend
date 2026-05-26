@@ -126,6 +126,9 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // Serve local uploads
 app.use("/uploads", express.static(UPLOADS_DIR));
 
+// Email-only brand assets (not used by sidebar / app UI)
+app.use("/brand", express.static(path.join(__dirname, "assets", "brand")));
+
 app.use("/api/auth", authRoutes);
 app.use("/api/forms", formRoutes);
 app.use("/api/folders", folderRoutes);

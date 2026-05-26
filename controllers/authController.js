@@ -3,6 +3,7 @@ const generateToken = require("../utils/generateToken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { OAuth2Client } = require("google-auth-library");
+const { prepareBrandedEmail } = require("../utils/emailBrand");
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{6,}$/;
@@ -103,7 +104,7 @@ function buildVerificationEmailHtml(link) {
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo" style="font-family: 'Work Sans', sans-serif; font-weight: 600;">formbridge<span style="font-family: 'Instrument Serif', serif; color: rgba(255,255,255,0.95);">.ai</span></div>
+      <!--FORMBRIDGE_EMAIL_LOGO-->
       <div class="title">Verify Account</div>
     </div>
     <div class="content">
@@ -169,9 +170,7 @@ async function sendVerificationEmail({ to, link }) {
               style="background:linear-gradient(135deg,#184BFB 0%,#0e1116 100%);
               padding:35px 20px; color:white;">
 
-              <div style="font-size:32px; font-weight:600; font-family:'Work Sans',Arial,sans-serif;">
-                formbridge<span style="font-family:'Instrument Serif',Georgia,serif; font-weight:400;">.ai</span>
-              </div>
+              <!--FORMBRIDGE_EMAIL_LOGO-->
 
               <div style="margin-top:8px; font-size:12px; letter-spacing:2px;">
                 VERIFY ACCOUNT
@@ -243,11 +242,14 @@ async function sendVerificationEmail({ to, link }) {
 </html>
 `;
 
+  const { html: brandedHtml, attachments } = prepareBrandedEmail(htmlTemplate, []);
+
   await transporter.sendMail({
     from: `"formbridge.ai" <${process.env.EMAIL_USER}>`,
     to,
     subject: "Verify your formbridge.ai account",
-    html: htmlTemplate,
+    html: brandedHtml,
+    attachments,
   });
 }
 

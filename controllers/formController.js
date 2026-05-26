@@ -270,6 +270,7 @@ const testTemplate = async (req, res) => {
       applyCustomTemplatePlaceholders,
       getSampleTemplateData,
     } = require("../utils/emailTemplate");
+    const { prepareBrandedEmail } = require("../utils/emailBrand");
     const { resolveMailerForForm } = require("../utils/resolveSmtp");
     const { resolveDashboardUrl } = require("../utils/dashboardUrl");
     const nodemailer = require("nodemailer");
@@ -277,7 +278,7 @@ const testTemplate = async (req, res) => {
     const sampleData = getSampleTemplateData();
     const dashboardUrl = resolveDashboardUrl(form._id, req);
 
-    const processedHtml = applyCustomTemplatePlaceholders(htmlSource, {
+    const templatedHtml = applyCustomTemplatePlaceholders(htmlSource, {
       formName: form.name,
       formId: String(form._id),
       dashboardUrl,
@@ -294,6 +295,8 @@ const testTemplate = async (req, res) => {
         ipAddress: "127.0.0.1",
       },
     });
+    const { html: processedHtml, attachments: testAttachments } =
+      prepareBrandedEmail(templatedHtml, []);
 
     if (!sendEmail) {
       return res.json({
@@ -327,6 +330,7 @@ const testTemplate = async (req, res) => {
       to: req.user.email,
       subject: `Test Custom Template - ${form.name}`,
       html: processedHtml,
+      attachments: testAttachments,
     });
 
     return res.json({
