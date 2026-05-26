@@ -271,18 +271,16 @@ const testTemplate = async (req, res) => {
       getSampleTemplateData,
     } = require("../utils/emailTemplate");
     const { resolveMailerForForm } = require("../utils/resolveSmtp");
+    const { resolveDashboardUrl } = require("../utils/dashboardUrl");
     const nodemailer = require("nodemailer");
 
     const sampleData = getSampleTemplateData();
-    const dashboardUrl =
-      process.env.FRONTEND_URL ||
-      process.env.PUBLIC_BASE_URL ||
-      "https://formbridge.ai";
+    const dashboardUrl = resolveDashboardUrl(form._id, req);
 
     const processedHtml = applyCustomTemplatePlaceholders(htmlSource, {
       formName: form.name,
       formId: String(form._id),
-      dashboardUrl: `${String(dashboardUrl).replace(/\/+$/, "")}/forms/${form._id}`,
+      dashboardUrl,
       cleanData: sampleData,
       metadata: {
         submittedAt: new Date().toLocaleString("en-US", {

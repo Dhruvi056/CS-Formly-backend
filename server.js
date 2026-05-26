@@ -1,8 +1,9 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
 const { exec } = require("child_process");
 const nodemailer = require("nodemailer");
 const multer = require("multer");
@@ -38,6 +39,7 @@ const {
 const { assertOwnerCanAcceptSubmission } = require("./utils/planUsage");
 const { normalizePhoneFieldsInFormData } = require("./utils/phoneFields");
 const { resolveMailerForForm } = require("./utils/resolveSmtp");
+const { resolveDashboardUrl } = require("./utils/dashboardUrl");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,64 +47,6 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 // Enable trust proxy for Cloudways/Nginx to correctly detect protocol (HTTP/HTTPS) and host
 app.set('trust proxy', 1);
-
-function normalizedEnvBaseUrl(value) {
-  if (!value || typeof value !== "string") return "";
-  return value.trim().replace(/\/+$/, "");
-}
-
-function isLocalHostLikeUrl(value) {
-  if (!value || typeof value !== "string") return false;
-  try {
-    const parsed = new URL(value);
-    return /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname);
-  } catch (_) {
-    return false;
-  }
-}
-
-function resolveDashboardBase(req) {
-  const publicBase = normalizedEnvBaseUrl(process.env.PUBLIC_BASE_URL);
-  const frontendBase = normalizedEnvBaseUrl(process.env.FRONTEND_URL);
-  const originBase = normalizedEnvBaseUrl(req.headers.origin);
-  const requestBase = normalizedEnvBaseUrl(getPublicRequestBase(req));
-
-  if (publicBase) return publicBase;
-  if (requestBase && !isLocalHostLikeUrl(requestBase)) return requestBase;
-  if (originBase && !isLocalHostLikeUrl(originBase)) return originBase;
-  if (frontendBase && !isLocalHostLikeUrl(frontendBase)) return frontendBase;
-  return requestBase || originBase || frontendBase || "";
-}
-
-function getPublicRequestBase(req) {
-  const publicBaseFromEnv = normalizedEnvBaseUrl(
-    process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL
-  );
-
-  const forwardedHostRaw = req.headers["x-forwarded-host"];
-  const forwardedProtoRaw = req.headers["x-forwarded-proto"];
-
-  const forwardedHost = Array.isArray(forwardedHostRaw)
-    ? forwardedHostRaw[0]
-    : String(forwardedHostRaw || "").split(",")[0].trim();
-  const forwardedProto = Array.isArray(forwardedProtoRaw)
-    ? forwardedProtoRaw[0]
-    : String(forwardedProtoRaw || "").split(",")[0].trim();
-
-  const host = forwardedHost || req.get("host") || "";
-  const proto = forwardedProto || req.protocol || "https";
-
-  // Avoid storing internal/private host URLs in DB.
-  if (/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host)) {
-    return publicBaseFromEnv || "";
-  }
-
-  if (host) {
-    return `${proto}://${host}`.replace(/\/+$/, "");
-  }
-
-  return publicBaseFromEnv || "";
-}
 
 // Preferred deployment structure:
 // backend/
@@ -395,10 +339,7 @@ async function handleFormSubmit(req, res) {
       const ccRecipients = parseNotificationEmails(
         mongoForm.settings?.ccNotificationEmail
       );
-      const dashboardBase = resolveDashboardBase(req);
-      const dashboardPath = `/forms/${formId}`;
-      // Link directly to the form page. The frontend handles auth redirects if needed.
-      const dashboardUrl = dashboardBase ? `${dashboardBase}${dashboardPath}` : dashboardPath;
+      const dashboardUrl = resolveDashboardUrl(formId, req);
 
       try {
         const mailer = await resolveMailerForForm({

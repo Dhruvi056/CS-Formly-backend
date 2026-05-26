@@ -1,25 +1,20 @@
 {
-  "short_name": "formbridge.ai",
-  "name": "formbridge.ai",
+  "short_name": "formbridge",
+  "name": "formbridge",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
+      "src": "assets/images/brand/formbridge-icon.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "logo512.png",
+      "src": "assets/images/brand/formbridge-icon.png",
       "type": "image/png",
       "sizes": "512x512"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#184BFB",
+  "theme_color": "#1b56ff",
   "background_color": "#f3f2ec"
 }

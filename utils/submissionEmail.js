@@ -444,13 +444,15 @@ function buildSubmissionEmailHtml({ formName, formId, dashboardUrl, cleanData, m
 </html>`;
 }
 
+const { sanitizeDashboardUrl } = require("./dashboardUrl");
+
 async function sendSubmissionNotificationEmails({
   transporter,
   fromUser,
   fromName,
   formName,
   formId,
-  dashboardUrl,
+  dashboardUrl: rawDashboardUrl,
   cleanData,
   recipients = [],
   metadata = {},
@@ -475,9 +477,23 @@ async function sendSubmissionNotificationEmails({
 
   const { applyCustomTemplatePlaceholders } = require("./emailTemplate");
 
+  const dashboardUrl = sanitizeDashboardUrl(
+    rawDashboardUrl,
+    {
+      headers: {
+        origin: metadata.requestOrigin || "",
+        referer: metadata.requestReferer || "",
+      },
+      ip: metadata.ipAddress,
+    }
+  );
+
+  const useCustomTemplate =
+    Boolean(customTemplateEnabled) && String(customTemplateBody || "").trim().length > 0;
+
   // Pre-build common parts to save time
   let baseHtml;
-  if (customTemplateEnabled && customTemplateBody) {
+  if (useCustomTemplate) {
     baseHtml = applyCustomTemplatePlaceholders(customTemplateBody, {
       formName,
       formId,
@@ -495,13 +511,17 @@ async function sendSubmissionNotificationEmails({
     });
   }
 
+  const usedCustomTemplate = useCustomTemplate;
+
   // Process CID images
   const urlBackedAttachments = collectUrlBackedAttachments(normalizedData, attachments);
   const finalAttachments = [...attachments, ...urlBackedAttachments];
-  const finalHtml = processCidImages(
-    normalizeFieldTablesInEmailHtml(baseHtml),
-    finalAttachments
-  );
+  // Unlayer/custom HTML uses nested layout tables — normalizeFieldTablesInEmailHtml
+  // breaks that design (test emails skip it; submissions must match).
+  const htmlForSend = usedCustomTemplate
+    ? baseHtml
+    : normalizeFieldTablesInEmailHtml(baseHtml);
+  const finalHtml = processCidImages(htmlForSend, finalAttachments);
 
   const to = recipients;
   const cc = ccRecipients;

@@ -33,6 +33,8 @@ const formSchema = mongoose.Schema(
 
       customTemplateEnabled: { type: Boolean, default: false },
       customTemplateBody: { type: String, default: "" },
+      /** Unlayer react-email-editor design JSON */
+      customTemplateDesign: { type: mongoose.Schema.Types.Mixed, default: null },
       customFromEmail: { type: String, default: "" },
       hideBranding: { type: Boolean, default: false },
 

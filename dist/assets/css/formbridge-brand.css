@@ -1,172 +1,344 @@
 /**
- * formbridge.ai brand overrides — loads after NobleUI demo1/style.css
+
+ * formbridge brand theme — loads after NobleUI demo1/style.css
+
  */
+
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Work+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap");
 
+
+
 :root,
+
 [data-bs-theme="light"] {
-  --brand-primary: #184BFB;
-  --brand-primary-hover: #1339C9;
+
+  --brand-primary: #1b56ff;
+
+  --brand-primary-hover: #1545cc;
+
   --brand-dark: #0e1116;
+
   --brand-cream: #f3f2ec;
-  --brand-primary-rgb: 24, 75, 251;
-  --brand-info-bg: rgba(24, 75, 251, 0.1);
+
+  --brand-primary-rgb: 27, 86, 255;
+
+  --brand-info-bg: rgba(27, 86, 255, 0.1);
+
   --font-sans: "Work Sans", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
   --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
 
-  --primary-color: #184BFB;
-  --primary-hover: #1339C9;
-  --nobleui-primary: #184BFB;
 
-  --bs-primary: #184BFB !important;
-  --bs-primary-rgb: 24, 75, 251 !important;
-  --bs-link-color: #184BFB !important;
-  --bs-link-hover-color: #1339C9 !important;
+
+  --primary-color: #1b56ff;
+
+  --primary-hover: #1545cc;
+
+  --nobleui-primary: #1b56ff;
+
+
+
+  --bs-primary: #1b56ff !important;
+
+  --bs-primary-rgb: 27, 86, 255 !important;
+
+  --bs-link-color: #1b56ff !important;
+
+  --bs-link-hover-color: #1545cc !important;
+
   --bs-dark: #0e1116 !important;
+
   --bs-dark-rgb: 14, 17, 22 !important;
+
   --bs-body-bg: #f3f2ec !important;
+
   --bs-body-color: #0e1116 !important;
+
   --bs-body-font-family: var(--font-sans) !important;
+
   --bs-border-color: rgba(14, 17, 22, 0.12) !important;
+
 }
+
+
 
 html,
+
 body,
+
 #root,
+
 .main-wrapper,
+
 .page-wrapper,
+
 .navbar,
+
 .sidebar,
+
 .modal,
+
 .dropdown-menu,
+
 .form-control,
+
 .btn {
+
   font-family: var(--font-sans) !important;
+
 }
+
+
 
 body {
+
   background-color: #f3f2ec !important;
+
   color: #0e1116 !important;
+
 }
+
+
 
 .main-wrapper .page-wrapper {
+
   background-color: #f3f2ec !important;
+
 }
+
+
 
 .sidebar {
+
   background-color: #fff !important;
+
 }
 
-/* Sidebar / auth wordmark — Work Sans */
-.sidebar .sidebar-header .sidebar-brand,
-.sidebar .sidebar-header .sidebar-brand:hover,
-.sidebar .sidebar-header .sidebar-brand:focus,
-.brand-text:not(.brand-text--display):not(.brand-text--lg) {
-  color: #0e1116 !important;
-  font-family: var(--font-sans) !important;
-  font-weight: 600 !important;
-  text-decoration: none !important;
+
+
+img[alt="formbridge"] {
+
+  display: block;
+
+  max-width: 200px;
+
+  width: 100%;
+
+  height: auto;
+
 }
 
-.brand-text--sm { font-size: 1.125rem; }
-.brand-text--md { font-size: 1.5rem; }
 
-/* Logo lockup — Instrument Serif (matches brand reference) */
-.brand-text--display,
-.brand-text--lg {
-  color: #0e1116 !important;
-  font-family: var(--font-serif) !important;
-  font-weight: 400 !important;
-  font-size: clamp(2.125rem, 5vw, 2.875rem);
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-  text-decoration: none !important;
+
+.sidebar .sidebar-header img[alt="formbridge"] {
+
+  max-width: 88px;
+
 }
 
-.font-serif {
-  font-family: var(--font-serif) !important;
-}
+
 
 /* Primary actions & links */
+
 .btn-primary,
+
 .bg-primary {
-  background-color: #184BFB !important;
-  border-color: #184BFB !important;
+
+  background-color: #1b56ff !important;
+
+  border-color: #1b56ff !important;
+
   color: #fff !important;
+
 }
+
+
 
 .btn-primary:hover,
+
 .btn-primary:focus,
+
 .btn-primary:active,
+
 .btn-primary.active {
-  background-color: #1339C9 !important;
-  border-color: #1339C9 !important;
+
+  background-color: #1545cc !important;
+
+  border-color: #1545cc !important;
+
   color: #fff !important;
+
 }
+
+
 
 .btn-outline-primary {
-  color: #184BFB !important;
-  border-color: #184BFB !important;
+
+  color: #1b56ff !important;
+
+  border-color: #1b56ff !important;
+
 }
+
+
 
 .btn-outline-primary:hover {
-  background-color: #184BFB !important;
+
+  background-color: #1b56ff !important;
+
   color: #fff !important;
+
 }
+
+
 
 .text-primary {
-  color: #184BFB !important;
+
+  color: #1b56ff !important;
+
 }
+
+
 
 .bg-primary-subtle {
-  background-color: rgba(24, 75, 251, 0.1) !important;
-  color: #184BFB !important;
+
+  background-color: rgba(27, 86, 255, 0.1) !important;
+
+  color: #1b56ff !important;
+
 }
+
+
 
 .border-primary {
-  border-color: #184BFB !important;
+
+  border-color: #1b56ff !important;
+
 }
+
+
 
 .table-primary {
-  --bs-table-bg: rgba(24, 75, 251, 0.08) !important;
+
+  --bs-table-bg: rgba(27, 86, 255, 0.08) !important;
+
 }
+
+
 
 /* Sidebar active nav */
+
 .sidebar .nav-link.active,
+
 .sidebar .nav-link:hover,
+
 .sidebar .nav .nav-link.active {
-  color: #184BFB !important;
+
+  color: #1b56ff !important;
+
 }
+
+
 
 .sidebar .nav-link .link-icon {
+
   color: inherit;
+
 }
+
+
 
 /* Auth pages */
+
 .auth-page .page-content {
+
   background-color: #f3f2ec !important;
+
 }
+
+
 
 .auth-page .card {
+
   background: #fff !important;
+
 }
+
+
 
 /* Focus rings */
+
 .form-control:focus,
+
 .form-select:focus {
-  border-color: #184BFB !important;
-  box-shadow: 0 0 0 0.2rem rgba(24, 75, 251, 0.15) !important;
+
+  border-color: #1b56ff !important;
+
+  box-shadow: 0 0 0 0.2rem rgba(27, 86, 255, 0.15) !important;
+
 }
+
+
 
 /* Info alerts — brand tint (no default Bootstrap cyan) */
+
 .alert-info {
+
   background-color: var(--brand-info-bg) !important;
-  color: #184BFB !important;
+
+  color: #1b56ff !important;
+
   border: none !important;
+
 }
 
+
+
 .fd-quill-container .ql-container,
+
 .fd-quill-container .ql-toolbar,
+
 .fd-quill-container .ql-editor {
+
   font-family: var(--font-sans) !important;
+
 }
+
+
+
+.auth-page .forms-sample {
+
+  border: none !important;
+
+}
+
+
+
+.auth-page .card .row > [class*="col"] {
+
+  border: none !important;
+
+}
+
+
+
+.auth-page .auth-divider hr {
+
+  display: none;
+
+}
+
+
+
+.auth-page .auth-divider span {
+
+  position: static;
+
+  transform: none;
+
+  background: transparent;
+
+  padding: 0;
+
+}
+
